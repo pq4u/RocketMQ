@@ -92,3 +92,5 @@ Architecture Decision Records live in `docs/adr/`.
   over log model (Kafka-style)
 - [ADR-0002](docs/adr/0002_routing_architecture.md) — Routing architecture:
   Exchanges, Bindings, Named Queues (AMQP-style)
+- [ADR-0003](docs/adr/0003_grpc_transport_layer.md) — gRPC Transport Layer 
+  and API Contract

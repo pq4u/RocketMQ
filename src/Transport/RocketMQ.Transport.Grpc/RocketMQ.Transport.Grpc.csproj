@@ -1,10 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Grpc.AspNetCore" Version="2.60.0" />
+      <PackageReference Include="Grpc.Tools" Version="2.60.0" PrivateAssets="All" />
+      <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Protobuf Include="Protos\rocketmq.proto" GrpcServices="Server" />
+    </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\..\Core\RocketMQ.Core\RocketMQ.Core.csproj" />

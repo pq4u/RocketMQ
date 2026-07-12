@@ -1,43 +1,57 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using RocketMQ.Core.Abstractions;
 using RocketMQ.Core.Models;
+using RocketMQ.Transport.Grpc.Services;
 
 namespace RocketMQ.Transport.Grpc;
 
-/// <summary>
-/// gRPC implementation of <see cref="ITransportServer"/> — the starting
-/// transport used to get a working prototype fast. Will eventually be
-/// replaced by <c>MyProject.Adapters.Transport.Pipelines</c> without any
-/// changes to Core, as long as this class keeps honoring the contract
-/// documented on ITransportServer.
-///
-/// TODO (first implementation pass):
-/// - Host a Grpc.AspNetCore service that receives frames and, for each
-///   one, builds an <see cref="Envelope"/> and writes it to the
-///   injected <see cref="IMessageChannel{T}"/> (contract point 2 —
-///   never a "Receive" method on this class itself).
-/// - Track connectionId -> gRPC stream/call mapping so SendAsync can
-///   route a reply to the right peer.
-/// - StopAsync must let in-flight SendAsync calls finish (contract point 3).
-/// </summary>
 public sealed class GrpcTransportServer : ITransportServer
 {
     private readonly IMessageChannel<Envelope> _inboundChannel;
+    private readonly IMessageQueueStore _queueStore;
+    private readonly IRoutingStore _routingStore;
+    private WebApplication? _app;
 
-    public GrpcTransportServer(IMessageChannel<Envelope> inboundChannel)
+    public GrpcTransportServer(
+        IMessageChannel<Envelope> inboundChannel,
+        IMessageQueueStore queueStore,
+        IRoutingStore routingStore)
     {
         _inboundChannel = inboundChannel;
+        _queueStore = queueStore;
+        _routingStore = routingStore;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
-        => throw new NotImplementedException(
-            "TODO: start Grpc.AspNetCore host, wrap incoming frames into Envelope and write via _inboundChannel.WriteAsync");
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://localhost:50051"); // Default gRPC port
+        
+        builder.Services.AddGrpc();
+        builder.Services.AddSingleton(_inboundChannel);
+        builder.Services.AddSingleton(_queueStore);
+        builder.Services.AddSingleton(_routingStore);
 
-    public Task StopAsync(CancellationToken cancellationToken)
-        => throw new NotImplementedException(
-            "TODO: stop host gracefully, await in-flight SendAsync calls before returning");
+        _app = builder.Build();
+        _app.MapGrpcService<ProducerService>();
+        _app.MapGrpcService<ConsumerService>();
+        _app.MapGrpcService<AdminService>();
+
+        await _app.StartAsync(cancellationToken);
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_app != null)
+        {
+            await _app.StopAsync(cancellationToken);
+        }
+    }
 
     public Task SendAsync(Guid connectionId, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
-        => throw new NotImplementedException(
-            "TODO: look up the gRPC stream for connectionId and write payload to it; " +
-            "throw InvalidOperationException if connectionId is unknown/closed (contract point 4)");
+    {
+        throw new InvalidOperationException("SendAsync is not supported in the unary gRPC transport.");
+    }
 }

@@ -1,0 +1,82 @@
+syntax = "proto3";
+package rocketmq.v1;
+option csharp_namespace = "RocketMQ.Transport.Grpc.Protos";
+
+// --- 1. Producer Service ---
+service Producer {
+  // Publishes a single message to an exchange
+  rpc Publish (PublishRequest) returns (PublishResponse);
+}
+
+message PublishRequest {
+  string exchange_name = 1;
+  string routing_key = 2;
+  bytes payload = 3;
+  // CorrelationId can be extracted from metadata/headers or added here
+  string correlation_id = 4;
+}
+
+message PublishResponse {
+  bool success = 1;
+}
+
+// --- 2. Consumer Service ---
+service Consumer {
+  // Attempts to lease the next available message
+  rpc LeaseNext (LeaseRequest) returns (LeaseResponse);
+  
+  // Acknowledges successful processing
+  rpc Ack (AckRequest) returns (AckResponse);
+  
+  // Rejects the message (optionally requeuing)
+  rpc Nack (NackRequest) returns (AckResponse);
+}
+
+message LeaseRequest {
+  string queue_name = 1;
+  int32 visibility_timeout_seconds = 2;
+}
+
+message LeaseResponse {
+  // Empty if no messages available
+  string lease_id = 1;
+  bytes payload = 2;
+  int32 delivery_count = 3;
+  string correlation_id = 4;
+}
+
+message AckRequest {
+  string lease_id = 1;
+}
+
+message NackRequest {
+  string lease_id = 1;
+  bool requeue = 2;
+}
+message AckResponse {}
+
+// --- 3. Admin Service ---
+service Admin {
+  rpc DeclareExchange (DeclareExchangeRequest) returns (AdminResponse);
+  rpc DeclareQueue (DeclareQueueRequest) returns (AdminResponse);
+  rpc Bind (BindRequest) returns (AdminResponse);
+}
+
+message DeclareExchangeRequest {
+  string exchange_name = 1;
+  string exchange_type = 2; // e.g. "direct", "fanout", "topic"
+}
+
+message DeclareQueueRequest {
+  string queue_name = 1;
+}
+
+message BindRequest {
+  string queue_name = 1;
+  string exchange_name = 2;
+  string routing_key = 3;
+}
+
+message AdminResponse {
+  bool success = 1;
+}

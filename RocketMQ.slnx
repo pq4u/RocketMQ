@@ -3,6 +3,9 @@
     <File Path=".claude/settings.json" />
   </Folder>
   <Folder Name="/src/" />
+  <Folder Name="/src/Client/">
+    <Project Path="src/Client/RocketMQ.Client/RocketMQ.Client.csproj" />
+  </Folder>
   <Folder Name="/src/Core/">
     <Project Path="src/Core/RocketMQ.Core/RocketMQ.Core.csproj" />
   </Folder>
@@ -20,5 +23,6 @@
     <Project Path="tests/RocketMQ.Architecture.Tests/RocketMQ.Architecture.Tests.csproj" />
     <Project Path="tests/RocketMQ.Contract.Tests/RocketMQ.Contract.Tests.csproj" />
     <Project Path="tests/RocketMQ.Runner.Unit.Tests/RocketMQ.Runner.Unit.Tests.csproj" />
+    <Project Path="tests/RocketMQ.Transport.Grpc.Tests/RocketMQ.Transport.Grpc.Tests.csproj" />
   </Folder>
 </Solution>
