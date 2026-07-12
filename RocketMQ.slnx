@@ -2,10 +2,23 @@
   <Folder Name="/.claude/">
     <File Path=".claude/settings.json" />
   </Folder>
-  <Folder Name="/src/">
-    <Project Path="src/RocketMQ.Runner/RocketMQ.Runner.csproj" />
+  <Folder Name="/src/" />
+  <Folder Name="/src/Core/">
+    <Project Path="src/Core/RocketMQ.Core/RocketMQ.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/Persistence/">
+    <Project Path="src/Persistence/RocketMQ.Persistence.Sqlite/RocketMQ.Persistence.Sqlite.csproj" />
+    <Project Path="src/Persistence/RocketMQ.Persistence.Wal/RocketMQ.Persistence.Wal.csproj" />
+  </Folder>
+  <Folder Name="/src/Runner/">
+    <Project Path="src/Runner/RocketMQ.Runner/RocketMQ.Runner.csproj" />
+  </Folder>
+  <Folder Name="/src/Transport/">
+    <Project Path="src/Transport/RocketMQ.Transport.Grpc/RocketMQ.Transport.Grpc.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/RocketMQ.Architecture.Tests/RocketMQ.Architecture.Tests.csproj" />
+    <Project Path="tests/RocketMQ.Contract.Tests/RocketMQ.Contract.Tests.csproj" />
     <Project Path="tests/RocketMQ.Runner.Unit.Tests/RocketMQ.Runner.Unit.Tests.csproj" />
   </Folder>
 </Solution>
