@@ -1,0 +1,7 @@
+<Project>
+    <PropertyGroup>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <WarningsAsErrors>$(WarningsAsErrors);IDE1006</WarningsAsErrors>
+        <AnalysisLevel>latest</AnalysisLevel>
+    </PropertyGroup>
+</Project>

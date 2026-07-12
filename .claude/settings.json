@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'F=\"$CLAUDE_TOOL_INPUT_FILE_PATH\"; [[ \"$F\" == *.cs ]] && dotnet format --include \"$F\" --verbosity quiet; exit 0'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dotnet test --no-restore --verbosity quiet || true"
+          }
+        ]
+      }
+    ]
+  }
+}
