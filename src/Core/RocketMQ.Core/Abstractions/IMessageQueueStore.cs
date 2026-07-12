@@ -63,20 +63,20 @@ namespace RocketMQ.Core.Abstractions;
 public interface IMessageQueueStore
 {
     /// <summary>
-    /// Persists a message durably into the queue. Returns a store-assigned
+    /// Persists a message durably into the named queue. Returns a store-assigned
     /// unique message identifier.
     /// Contract points: 1 (durability), 7 (concurrency).
     /// </summary>
-    Task<Guid> EnqueueAsync(InboundMessage message, CancellationToken ct);
+    Task<Guid> EnqueueAsync(string queueName, InboundMessage message, CancellationToken ct);
 
     /// <summary>
-    /// Atomically leases the next available message, making it invisible
-    /// to other consumers for the duration of visibilityTimeout. Returns
-    /// null if the queue has no available messages.
+    /// Atomically leases the next available message from the named queue,
+    /// making it invisible to other consumers for the duration of
+    /// visibilityTimeout. Returns null if the queue has no available messages.
     /// Contract points: 2 (atomicity), 3 (visibility timeout), 6 (FIFO),
     ///                   8 (DeliveryCount).
     /// </summary>
-    Task<LeasedMessage?> LeaseNextAsync(TimeSpan visibilityTimeout, CancellationToken ct);
+    Task<LeasedMessage?> LeaseNextAsync(string queueName, TimeSpan visibilityTimeout, CancellationToken ct);
 
     /// <summary>
     /// Permanently removes the message from the queue. The leaseId must
@@ -101,9 +101,10 @@ public interface IMessageQueueStore
     Task NackAsync(Guid leaseId, bool requeue, CancellationToken ct);
 
     /// <summary>
-    /// Returns dead-lettered messages for diagnostic/operational purposes.
-    /// This is a read-only browse — messages are not removed.
+    /// Returns dead-lettered messages from the named queue for
+    /// diagnostic/operational purposes. This is a read-only browse —
+    /// messages are not removed.
     /// Contract point: 5 (dead-letter retrievability).
     /// </summary>
-    IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(CancellationToken ct);
+    IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(string queueName, CancellationToken ct);
 }

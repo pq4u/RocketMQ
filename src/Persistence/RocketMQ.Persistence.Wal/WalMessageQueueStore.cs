@@ -30,16 +30,16 @@ public sealed class WalMessageQueueStore : IMessageQueueStore
         _filePath = filePath;
     }
 
-    public Task<Guid> EnqueueAsync(InboundMessage message, CancellationToken ct)
+    public Task<Guid> EnqueueAsync(string queueName, InboundMessage message, CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: append enqueue record to the log file, fsync, return message id. " +
-            "(contract point 1 — durability)");
+            "TODO: append enqueue record (with queue_name = @queueName) to the log " +
+            "file, fsync, return message id. (contract point 1 — durability)");
 
-    public Task<LeasedMessage?> LeaseNextAsync(TimeSpan visibilityTimeout, CancellationToken ct)
+    public Task<LeasedMessage?> LeaseNextAsync(string queueName, TimeSpan visibilityTimeout, CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: find oldest available message in the in-memory index, append " +
-            "lease record to log, fsync, update index, return LeasedMessage or null. " +
-            "(contract points 2, 3, 6, 8)");
+            "TODO: find oldest available message WHERE queue_name = @queueName in the " +
+            "in-memory index, append lease record to log, fsync, update index, return " +
+            "LeasedMessage or null. (contract points 2, 3, 6, 8)");
 
     public Task AckAsync(Guid leaseId, CancellationToken ct)
         => throw new NotImplementedException(
@@ -54,8 +54,8 @@ public sealed class WalMessageQueueStore : IMessageQueueStore
             "append dead-letter record, update index. Throw " +
             "InvalidOperationException if lease is not active. (contract point 5)");
 
-    public IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(CancellationToken ct)
+    public IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(string queueName, CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: scan dead-letter entries from the in-memory index. " +
-            "(contract point 5 — dead-letter retrievability)");
+            "TODO: scan dead-letter entries WHERE queue_name = @queueName from the " +
+            "in-memory index. (contract point 5 — dead-letter retrievability)");
 }

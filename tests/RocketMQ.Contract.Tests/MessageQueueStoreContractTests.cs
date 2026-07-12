@@ -17,6 +17,7 @@ namespace RocketMQ.Contract.Tests;
 /// </summary>
 public abstract class MessageQueueStoreContractTests : IAsyncLifetime
 {
+    private const string TestQueue = "test-queue";
     private IMessageQueueStore _store = null!;
 
     /// <summary>Creates a fresh, empty store instance for one test.</summary>
@@ -41,9 +42,9 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     public async Task EnqueueAsync_Then_LeaseNextAsync_Returns_The_Message()
     {
         var message = NewMessage();
-        await _store.EnqueueAsync(message, CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, message, CancellationToken.None);
 
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         Assert.NotNull(leased);
         Assert.Equal(message.CorrelationId, leased.Message.CorrelationId);
@@ -52,8 +53,8 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task EnqueueAsync_Returns_Unique_MessageIds()
     {
-        var id1 = await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        var id2 = await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
+        var id1 = await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var id2 = await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
 
         Assert.NotEqual(id1, id2);
     }
@@ -61,7 +62,7 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task LeaseNextAsync_Returns_Null_When_Queue_Is_Empty()
     {
-        var result = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var result = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         Assert.Null(result);
     }
@@ -72,13 +73,13 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
         var a = NewMessage();
         var b = NewMessage();
         var c = NewMessage();
-        await _store.EnqueueAsync(a, CancellationToken.None);
-        await _store.EnqueueAsync(b, CancellationToken.None);
-        await _store.EnqueueAsync(c, CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, a, CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, b, CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, c, CancellationToken.None);
 
-        var first = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
-        var second = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
-        var third = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var first = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
+        var second = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
+        var third = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         Assert.Equal(a.CorrelationId, first!.Message.CorrelationId);
         Assert.Equal(b.CorrelationId, second!.Message.CorrelationId);
@@ -90,10 +91,10 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task Leased_Message_Is_Not_Visible_To_Other_Consumers()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
 
-        var first = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
-        var second = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var first = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
+        var second = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         Assert.NotNull(first);
         Assert.Null(second);
@@ -104,10 +105,10 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     {
         const int count = 20;
         for (var i = 0; i < count; i++)
-            await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
+            await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
 
         var tasks = Enumerable.Range(0, count)
-            .Select(_ => _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None))
+            .Select(_ => _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None))
             .ToArray();
 
         var results = await Task.WhenAll(tasks);
@@ -122,22 +123,22 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task AckAsync_Permanently_Removes_Message()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMilliseconds(50), CancellationToken.None);
 
         await _store.AckAsync(leased!.LeaseId, CancellationToken.None);
 
         // Wait for visibility timeout to expire, then verify message is gone
         await Task.Delay(100);
-        var result = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var result = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.Null(result);
     }
 
     [Fact]
     public async Task AckAsync_Throws_For_Expired_Lease()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMilliseconds(50), CancellationToken.None);
 
         await Task.Delay(100); // Wait for lease to expire
 
@@ -158,12 +159,12 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     public async Task NackAsync_Requeue_True_Makes_Message_Available_Again()
     {
         var message = NewMessage();
-        await _store.EnqueueAsync(message, CancellationToken.None);
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, message, CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         await _store.NackAsync(leased!.LeaseId, requeue: true, CancellationToken.None);
 
-        var again = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var again = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.NotNull(again);
         Assert.Equal(message.CorrelationId, again.Message.CorrelationId);
     }
@@ -171,13 +172,13 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task NackAsync_Requeue_True_Preserves_DeliveryCount()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.Equal(1, leased!.DeliveryCount);
 
         await _store.NackAsync(leased.LeaseId, requeue: true, CancellationToken.None);
 
-        var again = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var again = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.Equal(2, again!.DeliveryCount);
     }
 
@@ -186,12 +187,12 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task NackAsync_Requeue_False_Dead_Letters_Message()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         await _store.NackAsync(leased!.LeaseId, requeue: false, CancellationToken.None);
 
-        var result = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var result = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.Null(result);
     }
 
@@ -199,12 +200,12 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     public async Task NackAsync_Requeue_False_Message_Appears_In_DeadLetters()
     {
         var message = NewMessage();
-        await _store.EnqueueAsync(message, CancellationToken.None);
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, message, CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         await _store.NackAsync(leased!.LeaseId, requeue: false, CancellationToken.None);
 
-        var deadLetters = await CollectAsync(_store.BrowseDeadLettersAsync(CancellationToken.None));
+        var deadLetters = await CollectAsync(_store.BrowseDeadLettersAsync(TestQueue, CancellationToken.None));
         Assert.Single(deadLetters);
         Assert.Equal(message.CorrelationId, deadLetters[0].Message.CorrelationId);
         Assert.Equal(1, deadLetters[0].DeliveryCount);
@@ -214,8 +215,8 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task NackAsync_Throws_For_Expired_Lease()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMilliseconds(50), CancellationToken.None);
 
         await Task.Delay(100); // Wait for lease to expire
 
@@ -228,36 +229,36 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task Expired_Lease_Makes_Message_Available_For_Redelivery()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        await _store.LeaseNextAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMilliseconds(50), CancellationToken.None);
 
         await Task.Delay(100); // Wait for visibility timeout to expire
 
-        var redelivered = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var redelivered = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.NotNull(redelivered);
     }
 
     [Fact]
     public async Task Redelivery_Increments_DeliveryCount()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        var first = await _store.LeaseNextAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var first = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMilliseconds(50), CancellationToken.None);
         Assert.Equal(1, first!.DeliveryCount);
 
         await Task.Delay(100); // Wait for visibility timeout to expire
 
-        var second = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var second = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.Equal(2, second!.DeliveryCount);
     }
 
     [Fact]
     public async Task Active_Lease_Prevents_Redelivery()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
-        await _store.LeaseNextAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        await _store.LeaseNextAsync(TestQueue, TimeSpan.FromSeconds(5), CancellationToken.None);
 
         // Immediately try again — lease is still active
-        var result = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var result = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
         Assert.Null(result);
     }
 
@@ -269,12 +270,12 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
         const int concurrency = 20;
         var messages = Enumerable.Range(0, concurrency).Select(_ => NewMessage()).ToList();
 
-        await Task.WhenAll(messages.Select(m => _store.EnqueueAsync(m, CancellationToken.None)));
+        await Task.WhenAll(messages.Select(m => _store.EnqueueAsync(TestQueue, m, CancellationToken.None)));
 
         var leased = new List<LeasedMessage>();
         while (true)
         {
-            var next = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+            var next = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
             if (next == null) break;
             leased.Add(next);
         }
@@ -289,9 +290,9 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
     [Fact]
     public async Task DeliveryCount_Starts_At_One_On_First_Lease()
     {
-        await _store.EnqueueAsync(NewMessage(), CancellationToken.None);
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
 
-        var leased = await _store.LeaseNextAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(TestQueue, TimeSpan.FromMinutes(5), CancellationToken.None);
 
         Assert.Equal(1, leased!.DeliveryCount);
     }

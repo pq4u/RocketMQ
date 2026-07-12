@@ -31,17 +31,17 @@ public sealed class SqliteMessageQueueStore : IMessageQueueStore
         _connectionString = connectionString;
     }
 
-    public Task<Guid> EnqueueAsync(InboundMessage message, CancellationToken ct)
+    public Task<Guid> EnqueueAsync(string queueName, InboundMessage message, CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: INSERT into messages with state='available', delivery_count=0. " +
-            "Return the assigned message id. (contract point 1 — durability)");
+            "TODO: INSERT into messages with queue_name=@queueName, state='available', " +
+            "delivery_count=0. Return the assigned message id. (contract point 1 — durability)");
 
-    public Task<LeasedMessage?> LeaseNextAsync(TimeSpan visibilityTimeout, CancellationToken ct)
+    public Task<LeasedMessage?> LeaseNextAsync(string queueName, TimeSpan visibilityTimeout, CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: BEGIN IMMEDIATE; UPDATE oldest available or expired-lease row, " +
-            "set state='leased', lease_id=new Guid, lease_expires_at_utc=now+timeout, " +
-            "delivery_count++; COMMIT; return LeasedMessage or null. " +
-            "(contract points 2, 3, 6, 8)");
+            "TODO: BEGIN IMMEDIATE; UPDATE oldest available or expired-lease row " +
+            "WHERE queue_name = @queueName, set state='leased', lease_id=new Guid, " +
+            "lease_expires_at_utc=now+timeout, delivery_count++; COMMIT; return " +
+            "LeasedMessage or null. (contract points 2, 3, 6, 8)");
 
     public Task AckAsync(Guid leaseId, CancellationToken ct)
         => throw new NotImplementedException(
@@ -58,8 +58,9 @@ public sealed class SqliteMessageQueueStore : IMessageQueueStore
             "If rows affected = 0, throw InvalidOperationException. " +
             "(contract point 5)");
 
-    public IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(CancellationToken ct)
+    public IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(string queueName, CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: SELECT * FROM messages WHERE state='dead_lettered' " +
-            "ORDER BY dead_lettered_at_utc. (contract point 5 — dead-letter retrievability)");
+            "TODO: SELECT * FROM messages WHERE queue_name = @queueName " +
+            "AND state='dead_lettered' ORDER BY dead_lettered_at_utc. " +
+            "(contract point 5 — dead-letter retrievability)");
 }

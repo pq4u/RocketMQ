@@ -1,4 +1,4 @@
-﻿using RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Abstractions;
 using RocketMQ.Core.Models;
 
 namespace RocketMQ.Transport.Grpc;
@@ -12,7 +12,7 @@ namespace RocketMQ.Transport.Grpc;
 ///
 /// TODO (first implementation pass):
 /// - Host a Grpc.AspNetCore service that receives frames and, for each
-///   one, builds an <see cref="InboundMessage"/> and writes it to the
+///   one, builds an <see cref="Envelope"/> and writes it to the
 ///   injected <see cref="IMessageChannel{T}"/> (contract point 2 —
 ///   never a "Receive" method on this class itself).
 /// - Track connectionId -> gRPC stream/call mapping so SendAsync can
@@ -21,16 +21,16 @@ namespace RocketMQ.Transport.Grpc;
 /// </summary>
 public sealed class GrpcTransportServer : ITransportServer
 {
-    private readonly IMessageChannel<InboundMessage> _inboundChannel;
+    private readonly IMessageChannel<Envelope> _inboundChannel;
 
-    public GrpcTransportServer(IMessageChannel<InboundMessage> inboundChannel)
+    public GrpcTransportServer(IMessageChannel<Envelope> inboundChannel)
     {
         _inboundChannel = inboundChannel;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
         => throw new NotImplementedException(
-            "TODO: start Grpc.AspNetCore host, wire incoming frames into _inboundChannel.WriteAsync");
+            "TODO: start Grpc.AspNetCore host, wrap incoming frames into Envelope and write via _inboundChannel.WriteAsync");
 
     public Task StopAsync(CancellationToken cancellationToken)
         => throw new NotImplementedException(
