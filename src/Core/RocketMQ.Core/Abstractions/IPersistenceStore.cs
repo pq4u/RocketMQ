@@ -1,3 +1,5 @@
+using RocketMQ.Core.Models;
+
 namespace RocketMQ.Core.Abstractions;
 
 /// <summary>

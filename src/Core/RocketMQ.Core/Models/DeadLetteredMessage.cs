@@ -1,4 +1,6 @@
-namespace RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Abstractions;
+
+namespace RocketMQ.Core.Models;
 
 /// <summary>
 /// A message that was nack'd with requeue=false. Preserved for diagnostics

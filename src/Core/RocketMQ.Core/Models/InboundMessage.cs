@@ -1,4 +1,4 @@
-namespace RocketMQ.Core.Abstractions;
+namespace RocketMQ.Core.Models;
 
 /// <summary>
 /// A single unit of data flowing through the system, regardless of whether

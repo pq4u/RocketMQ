@@ -1,5 +1,6 @@
 ﻿using NetArchTest.Rules;
 using RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Models;
 using TestResult = NetArchTest.Rules.TestResult;
 
 namespace RocketMQ.Architecture.Tests;
@@ -39,7 +40,7 @@ public class CoreArchitectureTests
         // shortcut that quietly reintroduces coupling.
         var result = Types.InAssembly(_coreAssembly)
             .That()
-            .ResideInNamespace("MyProject.Core.Abstractions")
+            .ResideInNamespace("RocketMQ.Core.Abstractions")
             .Should()
             .BeInterfaces()
             .GetResult();
@@ -55,7 +56,7 @@ public class CoreArchitectureTests
         // instead of adding a new type" early.
         var result = Types.InAssembly(_coreAssembly)
             .That()
-            .ResideInNamespace("MyProject.Core.Domain")
+            .ResideInNamespace("RocketMQ.Core.Domain")
             .And()
             .AreClasses()
             .Should()

@@ -1,4 +1,5 @@
 using RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Models;
 using Xunit;
 
 namespace RocketMQ.Contract.Tests;

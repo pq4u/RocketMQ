@@ -1,4 +1,5 @@
 using RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Models;
 
 namespace RocketMQ.Persistence.Wal;
 

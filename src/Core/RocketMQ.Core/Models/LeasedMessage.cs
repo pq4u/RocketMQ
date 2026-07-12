@@ -1,4 +1,6 @@
-namespace RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Abstractions;
+
+namespace RocketMQ.Core.Models;
 
 /// <summary>
 /// Represents a message that has been leased from the queue. Contains
