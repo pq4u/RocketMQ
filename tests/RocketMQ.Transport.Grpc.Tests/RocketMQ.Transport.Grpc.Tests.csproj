@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Transport\RocketMQ.Transport.Grpc\RocketMQ.Transport.Grpc.csproj" />
+    <ProjectReference Include="..\..\src\Runner\RocketMQ.Runner\RocketMQ.Runner.csproj" />
   </ItemGroup>
 
 </Project>

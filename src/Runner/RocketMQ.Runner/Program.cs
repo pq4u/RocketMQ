@@ -46,6 +46,11 @@ public class InMemoryMessageChannel : IMessageChannel<Envelope>
 
     public async ValueTask WriteAsync(Envelope message, CancellationToken cancellationToken)
     {
+        if (_channel.Writer.TryWrite(message))
+        {
+            return;
+        }
+
         try
         {
             await _channel.Writer.WriteAsync(message, cancellationToken);

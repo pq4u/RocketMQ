@@ -56,14 +56,14 @@ public class CoreArchitectureTests
         // instead of adding a new type" early.
         var result = Types.InAssembly(_coreAssembly)
             .That()
-            .ResideInNamespace("RocketMQ.Core.Domain")
+            .ResideInNamespace("RocketMQ.Core.Models")
             .And()
             .AreClasses()
             .Should()
             .BeSealed()
             .GetResult();
 
-        Assert.True(result.IsSuccessful, FormatFailures(result, "Core.Domain classes must be sealed"));
+        Assert.True(result.IsSuccessful, FormatFailures(result, "Core.Models classes must be sealed"));
     }
 
     private static string FormatFailures(TestResult result, string ruleDescription)

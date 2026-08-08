@@ -27,8 +27,14 @@ public sealed class GrpcTransportServer : ITransportServer
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls("http://localhost:50051"); // Default gRPC port
-        
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(50051, listenOptions =>
+            {
+                listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
+            });
+        });
+
         builder.Services.AddGrpc();
         builder.Services.AddSingleton(_inboundChannel);
         builder.Services.AddSingleton(_queueStore);
