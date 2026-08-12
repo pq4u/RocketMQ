@@ -8,64 +8,43 @@ using Xunit;
 
 namespace RocketMQ.Transport.Grpc.Tests;
 
-public class ProducerServiceTests
+public sealed class ProducerServiceTests
 {
-    private readonly Mock<IMessageChannel<Envelope>> _channelMock;
-    private readonly ProducerService _service;
-    private readonly TestServerCallContext _context;
-
-    public ProducerServiceTests()
-    {
-        _channelMock = new Mock<IMessageChannel<Envelope>>();
-        _service = new ProducerService(_channelMock.Object);
-        _context = new TestServerCallContext();
-    }
+    private readonly Mock<IMessagePublisher> _publisher = new();
+    private readonly TestServerCallContext _context = new();
 
     [Fact]
-    public async Task Publish_ValidRequest_WritesToChannelAndReturnsSuccess()
+    public async Task Publish_ValidRequest_ReturnsDurableRoutingOutcome()
     {
-        // Arrange
-        var request = new PublishRequest
+        var publishId = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        _publisher.Setup(x => x.PublishAsync(publishId, It.IsAny<Envelope>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublishResult(publishId, messageId, PublishStatus.Accepted, ["orders"]));
+        var service = new ProducerService(_publisher.Object);
+
+        var response = await service.Publish(new PublishRequest
         {
-            ExchangeName = "my-exchange",
-            RoutingKey = "my.routing.key",
-            Payload = Google.Protobuf.ByteString.CopyFromUtf8("hello world"),
-            CorrelationId = Guid.NewGuid().ToString()
-        };
+            ExchangeName = "orders",
+            RoutingKey = "created",
+            CorrelationId = Guid.NewGuid().ToString(),
+            PublishId = publishId.ToString(),
+            Payload = Google.Protobuf.ByteString.CopyFromUtf8("hello")
+        }, _context);
 
-        _channelMock.Setup(x => x.WriteAsync(It.IsAny<Envelope>(), It.IsAny<CancellationToken>()))
-            .Returns(ValueTask.CompletedTask);
-
-        // Act
-        var response = await _service.Publish(request, _context);
-
-        // Assert
         Assert.True(response.Success);
-        _channelMock.Verify(x => x.WriteAsync(It.Is<Envelope>(e => 
-            e.ExchangeName == "my-exchange" &&
-            e.RoutingKey == "my.routing.key" &&
-            e.Message.CorrelationId == Guid.Parse(request.CorrelationId) &&
-            e.Message.Payload.ToArray().SequenceEqual(request.Payload.ToByteArray())
-        ), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(messageId.ToString(), response.MessageId);
+        Assert.Equal("Accepted", response.Status);
+        Assert.Equal(["orders"], response.DestinationQueues);
     }
 
     [Fact]
-    public async Task Publish_ChannelFull_ThrowsResourceExhausted()
+    public async Task Publish_UnknownExchange_ReturnsNotFound()
     {
-        // Arrange
-        var request = new PublishRequest
-        {
-            ExchangeName = "my-exchange",
-            RoutingKey = "my.routing.key",
-            Payload = Google.Protobuf.ByteString.CopyFromUtf8("hello world")
-        };
+        _publisher.Setup(x => x.PublishAsync(It.IsAny<Guid>(), It.IsAny<Envelope>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new KeyNotFoundException("Exchange missing"));
+        var service = new ProducerService(_publisher.Object);
 
-        _channelMock.Setup(x => x.WriteAsync(It.IsAny<Envelope>(), It.IsAny<CancellationToken>()))
-            .Throws(new OperationCanceledException());
-
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<RpcException>(() => _service.Publish(request, _context));
-        Assert.Equal(StatusCode.ResourceExhausted, ex.StatusCode);
-        Assert.Contains("backpressure applied", ex.Status.Detail);
+        var exception = await Assert.ThrowsAsync<RpcException>(() => service.Publish(new PublishRequest { ExchangeName = "missing" }, _context));
+        Assert.Equal(StatusCode.NotFound, exception.StatusCode);
     }
 }

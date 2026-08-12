@@ -1,13 +1,10 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Grpc.Core;
-using RocketMQ.Transport.Grpc.Protos;
 using Microsoft.Extensions.Logging;
+using RocketMQ.Transport.Grpc.Protos;
 
 namespace RocketMQ.Client;
 
-public class Producer : IProducer
+public sealed class Producer : IProducer
 {
     private readonly RocketMQ.Transport.Grpc.Protos.Producer.ProducerClient _client;
     private readonly ILogger<Producer> _logger;
@@ -18,40 +15,29 @@ public class Producer : IProducer
         _logger = logger;
     }
 
-    public async Task PublishAsync(string exchangeName, string routingKey, ReadOnlyMemory<byte> payload, string? correlationId = null, CancellationToken ct = default)
+    public async Task<PublishResult> PublishAsync(string exchangeName, string routingKey, ReadOnlyMemory<byte> payload, string? correlationId = null, Guid? publishId = null, CancellationToken ct = default)
     {
         var request = new PublishRequest
         {
             ExchangeName = exchangeName ?? string.Empty,
             RoutingKey = routingKey ?? string.Empty,
             Payload = Google.Protobuf.ByteString.CopyFrom(payload.Span),
-            CorrelationId = correlationId ?? string.Empty
+            CorrelationId = correlationId ?? string.Empty,
+            PublishId = (publishId ?? Guid.NewGuid()).ToString()
         };
-
-        int maxRetries = 5;
-        int delayMs = 100;
-        var random = new Random();
-
-        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        var delay = TimeSpan.FromMilliseconds(100);
+        for (var attempt = 0; ; attempt++)
         {
             try
             {
-                await _client.PublishAsync(request, cancellationToken: ct);
-                return;
+                var response = await _client.PublishAsync(request, cancellationToken: ct);
+                return new PublishResult(Guid.Parse(response.PublishId), Guid.Parse(response.MessageId), response.Status, response.DestinationQueues.ToList());
             }
-            catch (RpcException ex) when (ex.StatusCode == StatusCode.ResourceExhausted)
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.ResourceExhausted && attempt < 5)
             {
-                if (attempt == maxRetries)
-                {
-                    _logger.LogError(ex, "Max retries reached when publishing to {ExchangeName}. Resource exhausted.", exchangeName);
-                    throw;
-                }
-
-                int jitter = random.Next(0, 50);
-                var waitTime = TimeSpan.FromMilliseconds(delayMs + jitter);
-                _logger.LogWarning("Resource exhausted. Retrying {Attempt}/{MaxRetries} in {WaitTimeMs}ms...", attempt + 1, maxRetries, waitTime.TotalMilliseconds);
-                await Task.Delay(waitTime, ct);
-                delayMs *= 2; // exponential backoff
+                _logger.LogWarning(ex, "Publish backpressured; retrying attempt {Attempt}.", attempt + 1);
+                await Task.Delay(delay, ct);
+                delay *= 2;
             }
         }
     }

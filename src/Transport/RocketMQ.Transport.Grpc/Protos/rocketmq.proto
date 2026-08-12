@@ -11,10 +11,15 @@ message PublishRequest {
   string routing_key = 2;
   bytes payload = 3;
   string correlation_id = 4;
+  string publish_id = 5;
 }
 
 message PublishResponse {
   bool success = 1;
+  string message_id = 2;
+  string publish_id = 3;
+  string status = 4;
+  repeated string destination_queues = 5;
 }
 
 service Consumer {

@@ -20,6 +20,13 @@ Return success only after the message has been durably committed to every resolv
 
 For the first implementation, route and persist synchronously through a broker service or durable outbox rather than treating the in-memory channel write as confirmation.
 
+## Implemented semantics
+
+- `Publish` confirms only after one SQLite transaction records its publish-idempotency entry and every routed queue copy.
+- Response returns broker `message_id`, `publish_id`, routing status, and destination queues. `Unroutable` is explicit and not persisted.
+- A `publish_id` is retained for 24 hours. Repeating it with identical exchange, routing key, correlation ID, and payload returns the original outcome; different content returns `AlreadyExists`.
+- Unknown exchanges return gRPC `NotFound`.
+
 ## Questions
 
 1. Should `Publish` wait for durable enqueue into all matching queues?

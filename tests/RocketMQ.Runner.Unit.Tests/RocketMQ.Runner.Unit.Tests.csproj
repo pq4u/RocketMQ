@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
@@ -24,6 +24,7 @@
     <ItemGroup>
         <ProjectReference Include="..\..\src\Core\RocketMQ.Core\RocketMQ.Core.csproj" />
         <ProjectReference Include="..\..\src\Runner\RocketMQ.Runner\RocketMQ.Runner.csproj" />
+        <ProjectReference Include="..\..\src\Persistence\RocketMQ.Persistence.Sqlite\RocketMQ.Persistence.Sqlite.csproj" />
         <ProjectReference Include="..\RocketMQ.Contract.Tests\RocketMQ.Contract.Tests.csproj" />
     </ItemGroup>
 

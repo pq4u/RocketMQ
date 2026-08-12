@@ -1,128 +1,68 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RocketMQ.Core.Abstractions;
-using RocketMQ.Core.Models;
-using RocketMQ.Core.Routing;
+using RocketMQ.Persistence.Sqlite;
 using RocketMQ.Transport.Grpc;
 
 namespace RocketMQ.Runner;
 
-public class Program
+public static class Program
 {
     public static async Task Main(string[] args)
     {
-        Console.WriteLine("Starting RocketMQ Runner...");
         var host = Host.CreateDefaultBuilder(args)
             .ConfigureServices((context, services) =>
             {
-                // Core
-                services.AddSingleton<IMessageQueueStore, InMemoryMessageQueueStore>();
-                services.AddSingleton<IRoutingStore, InMemoryRoutingStore>();
-                services.AddSingleton<IMessageRouter, MessageRouter>();
-                services.AddSingleton<IMessageChannel<Envelope>, InMemoryMessageChannel>();
-                services.AddSingleton<ITransportServer, GrpcTransportServer>();
+                var databasePath = context.Configuration["RocketMQ:Persistence:DatabasePath"];
+                if (string.IsNullOrWhiteSpace(databasePath) || !Path.IsPathFullyQualified(databasePath) || databasePath.StartsWith("\\\\", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("RocketMQ:Persistence:DatabasePath must be an absolute path on local storage.");
+                }
 
-                // Hosted Services
+                var directory = Path.GetDirectoryName(databasePath);
+                if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+                {
+                    throw new InvalidOperationException("The configured SQLite database directory must already exist.");
+                }
+
+                var connectionString = $"Data Source={databasePath};Mode=ReadWriteCreate;Cache=Shared";
+                services.AddSingleton(new SqliteDatabase(connectionString));
+                services.AddSingleton<IMessageQueueStore, SqliteMessageQueueStore>();
+                services.AddSingleton<IRoutingStore, SqliteRoutingStore>();
+                services.AddSingleton<IPersistenceStore, SqlitePersistenceStore>();
+                services.AddSingleton<IMessagePublisher, SqliteMessagePublisher>();
+                services.AddSingleton<ITransportServer, GrpcTransportServer>();
+                services.AddSingleton<SqliteMaintenanceService>();
                 services.AddHostedService<ServerHostedService>();
-                services.AddHostedService<RoutingWorkerService>();
+                services.AddHostedService<SqliteMaintenanceHostedService>();
             })
             .Build();
-
         await host.RunAsync();
     }
 }
 
-public class InMemoryMessageChannel : IMessageChannel<Envelope>
-{
-    private readonly Channel<Envelope> _channel = Channel.CreateBounded<Envelope>(new BoundedChannelOptions(1000)
-    {
-        FullMode = BoundedChannelFullMode.Wait
-    });
-
-    public async ValueTask WriteAsync(Envelope message, CancellationToken cancellationToken)
-    {
-        if (_channel.Writer.TryWrite(message))
-        {
-            return;
-        }
-
-        try
-        {
-            await _channel.Writer.WriteAsync(message, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw new OperationCanceledException();
-        }
-    }
-
-    public void Complete()
-    {
-        _channel.Writer.Complete();
-    }
-
-    public IAsyncEnumerable<Envelope> ReadAllAsync(CancellationToken cancellationToken)
-    {
-        return _channel.Reader.ReadAllAsync(cancellationToken);
-    }
-}
-
-public class RoutingWorkerService : BackgroundService
-{
-    private readonly IMessageChannel<Envelope> _channel;
-    private readonly IMessageRouter _router;
-    private readonly IMessageQueueStore _queueStore;
-
-    public RoutingWorkerService(IMessageChannel<Envelope> channel, IMessageRouter router, IMessageQueueStore queueStore)
-    {
-        _channel = channel;
-        _router = router;
-        _queueStore = queueStore;
-    }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        await foreach (var envelope in _channel.ReadAllAsync(stoppingToken))
-        {
-            try
-            {
-                var queueNames = await _router.ResolveAsync(envelope.ExchangeName, envelope.RoutingKey, stoppingToken);
-                foreach (var queue in queueNames)
-                {
-                    await _queueStore.EnqueueAsync(queue, envelope.Message, stoppingToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Routing error: {ex.Message}");
-            }
-        }
-    }
-}
-
-public class ServerHostedService : IHostedService
+public sealed class ServerHostedService : IHostedService
 {
     private readonly ITransportServer _server;
 
-    public ServerHostedService(ITransportServer server)
-    {
-        _server = server;
-    }
+    public ServerHostedService(ITransportServer server) => _server = server;
+    public Task StartAsync(CancellationToken cancellationToken) => _server.StartAsync(cancellationToken);
+    public Task StopAsync(CancellationToken cancellationToken) => _server.StopAsync(cancellationToken);
+}
 
-    public async Task StartAsync(CancellationToken cancellationToken)
-    {
-        Console.WriteLine("Starting GrpcTransportServer...");
-        await _server.StartAsync(cancellationToken);
-        Console.WriteLine("GrpcTransportServer started.");
-    }
+public sealed class SqliteMaintenanceHostedService : BackgroundService
+{
+    private readonly SqliteMaintenanceService _maintenance;
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public SqliteMaintenanceHostedService(SqliteMaintenanceService maintenance) => _maintenance = maintenance;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _server.StopAsync(cancellationToken);
+        using var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+        do
+        {
+            await _maintenance.PurgeDeadLettersAsync(TimeSpan.FromDays(30), stoppingToken);
+        }
+        while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 }
