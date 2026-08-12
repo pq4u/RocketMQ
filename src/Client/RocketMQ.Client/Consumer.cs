@@ -2,8 +2,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
-using RocketMQ.Transport.Grpc.Protos;
 using Microsoft.Extensions.Logging;
+using RocketMQ.Transport.Grpc.Protos;
 
 namespace RocketMQ.Client;
 
@@ -14,25 +14,48 @@ public class Consumer : IConsumer
     private Task? _backgroundTask;
     private CancellationTokenSource? _cts;
 
-    public Consumer(RocketMQ.Transport.Grpc.Protos.Consumer.ConsumerClient client, ILogger<Consumer> logger)
+    public Consumer(
+        RocketMQ.Transport.Grpc.Protos.Consumer.ConsumerClient client,
+        ILogger<Consumer> logger)
     {
         _client = client;
         _logger = logger;
     }
 
-    public Task StartConsumingAsync(string queueName, Func<MessageContext, Task<ConsumeResult>> handler, CancellationToken ct = default)
+    public Task StartConsumingAsync(
+        string queueName,
+        Func<MessageContext, Task<ConsumeResult>> handler,
+        CancellationToken ct = default)
+        => StartConsumingAsync(queueName, handler, new ConsumerOptions(), ct);
+
+    public Task StartConsumingAsync(
+        string queueName,
+        Func<MessageContext, Task<ConsumeResult>> handler,
+        ConsumerOptions options,
+        CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(options);
+
         if (_backgroundTask != null)
         {
             throw new InvalidOperationException("Consumer is already running.");
         }
 
+        _ = options.VisibilityTimeoutSeconds;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        _backgroundTask = Task.Run(() => ConsumeLoopAsync(queueName, handler, _cts.Token), _cts.Token);
+        _backgroundTask = Task.Run(
+            () => ConsumeLoopAsync(queueName, handler, options, _cts.Token),
+            _cts.Token);
+
         return Task.CompletedTask;
     }
 
-    private async Task ConsumeLoopAsync(string queueName, Func<MessageContext, Task<ConsumeResult>> handler, CancellationToken ct)
+    private async Task ConsumeLoopAsync(
+        string queueName,
+        Func<MessageContext, Task<ConsumeResult>> handler,
+        ConsumerOptions options,
+        CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -41,14 +64,13 @@ public class Consumer : IConsumer
                 var request = new LeaseRequest
                 {
                     QueueName = queueName ?? string.Empty,
-                    VisibilityTimeoutSeconds = 30
+                    VisibilityTimeoutSeconds = options.VisibilityTimeoutSeconds
                 };
 
                 var response = await _client.LeaseNextAsync(request, cancellationToken: ct);
 
                 if (string.IsNullOrEmpty(response.LeaseId))
                 {
-                    // No messages available, delay and continue
                     await Task.Delay(1000, ct);
                     continue;
                 }
@@ -57,8 +79,10 @@ public class Consumer : IConsumer
                     response.LeaseId,
                     response.Payload.Memory,
                     response.DeliveryCount,
-                    response.CorrelationId
-                );
+                    response.CorrelationId)
+                {
+                    MessageId = response.MessageId
+                };
 
                 ConsumeResult result;
                 try
@@ -68,17 +92,21 @@ public class Consumer : IConsumer
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error processing message {LeaseId}", response.LeaseId);
-                    result = ConsumeResult.Requeue; // Default on exception
+                    result = ConsumeResult.Requeue;
                 }
 
                 if (result == ConsumeResult.Success)
                 {
-                    await _client.AckAsync(new AckRequest { LeaseId = response.LeaseId }, cancellationToken: ct);
+                    await _client.AckAsync(
+                        new AckRequest { LeaseId = response.LeaseId },
+                        cancellationToken: ct);
                 }
                 else
                 {
-                    bool requeue = result == ConsumeResult.Requeue;
-                    await _client.NackAsync(new NackRequest { LeaseId = response.LeaseId, Requeue = requeue }, cancellationToken: ct);
+                    var requeue = result == ConsumeResult.Requeue;
+                    await _client.NackAsync(
+                        new NackRequest { LeaseId = response.LeaseId, Requeue = requeue },
+                        cancellationToken: ct);
                 }
             }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
@@ -91,9 +119,13 @@ public class Consumer : IConsumer
             }
             catch (Exception ex)
             {
-                if (ct.IsCancellationRequested) break;
+                if (ct.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 _logger.LogError(ex, "Error in consumer loop");
-                await Task.Delay(2000, ct); // Delay before retrying loop on unhandled exception
+                await Task.Delay(2000, ct);
             }
         }
     }
@@ -109,8 +141,11 @@ public class Consumer : IConsumer
                 {
                     await _backgroundTask;
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException)
+                {
+                }
             }
+
             _cts.Dispose();
         }
     }

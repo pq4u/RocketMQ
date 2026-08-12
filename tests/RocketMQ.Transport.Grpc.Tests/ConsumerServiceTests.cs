@@ -29,7 +29,8 @@ public class ConsumerServiceTests
         var messageId = Guid.NewGuid();
         var leaseId = Guid.NewGuid();
         var inboundMessage = new InboundMessage(Guid.NewGuid(), messageId, new byte[] { 1, 2, 3 }, DateTimeOffset.UtcNow);
-        var leasedMessage = new LeasedMessage(leaseId, inboundMessage, 1, DateTimeOffset.UtcNow.AddSeconds(30));
+        var storeMessageId = Guid.NewGuid();
+        var leasedMessage = new LeasedMessage(storeMessageId, leaseId, inboundMessage, 1, DateTimeOffset.UtcNow.AddSeconds(30));
 
         _queueStoreMock.Setup(x => x.LeaseNextAsync("my-queue", TimeSpan.FromSeconds(30), It.IsAny<CancellationToken>()))
             .ReturnsAsync(leasedMessage);
@@ -39,6 +40,7 @@ public class ConsumerServiceTests
 
         // Assert
         Assert.Equal(leaseId.ToString(), response.LeaseId);
+        Assert.Equal(storeMessageId.ToString(), response.MessageId);
         Assert.Equal(messageId.ToString(), response.CorrelationId);
         Assert.Equal(1, response.DeliveryCount);
         Assert.Equal(new byte[] { 1, 2, 3 }, response.Payload.ToByteArray());

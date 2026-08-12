@@ -2,27 +2,69 @@
 
 ## Status
 
-Confirmed direction: SQLite first, WAL later.
+Confirmed implementation decision: SQLite is the only durable backend for the first usable release. A custom WAL is deferred until the benchmark gate below is met.
 
 ## Current baseline
 
 The runner currently registers in-memory queue and routing stores. The SQLite and custom WAL projects exist, but their implementations are incomplete and contain `NotImplementedException` paths, for example [`SqliteMessageQueueStore.cs`](../../src/Persistence/RocketMQ.Persistence.Sqlite/SqliteMessageQueueStore.cs) and [`WalMessageQueueStore.cs`](../../src/Persistence/RocketMQ.Persistence.Wal/WalMessageQueueStore.cs).
 
-## Analysis
+## Decisions
 
-SQLite is a good first durable backend because it provides transactions, indexing, crash recovery, and a mature WAL mode without requiring a custom file format. The queue store and routing store must share a clear transaction model. A successful publish must not be reported before the message is durably accepted according to the publish-confirmation decision.
+1. **One database per broker node.** All exchanges, queues, bindings, messages, leases, dead letters, and schema-version records live in one SQLite database file. Do not shard queues into files and do not allow two broker processes to open the same database for writing. This makes routing plus fanout enqueue atomic and keeps topology referentially consistent.
 
-The schema must represent messages, queue state, leases, delivery counts, dead letters, exchanges, queues, bindings, and schema version. Lease recovery after restart must be deterministic. The custom WAL should only be introduced after measurements demonstrate that SQLite is the bottleneck.
+2. **Durable confirmation requires `synchronous=FULL`.** Before serving requests, every SQLite connection must set `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`, and a finite `busy_timeout`. A publish is confirmed only after its transaction commits. `NORMAL` is not an accepted setting for a confirmed publish because it weakens the required host/power-loss durability boundary. The database directory must be on local durable storage; a network share is unsupported.
 
-## Recommended default
+3. **Only durable queues in the first release.** `QueueDefinition.Durable` must be `true`; declaring `Durable=false` fails validation with a clear unsupported-feature error. A non-durable queue would contradict the completed-`EnqueueAsync` durability contract and needs a separate in-memory lifecycle design, so it is deferred rather than given ambiguous restart semantics.
 
-Implement one SQLite database per broker node, enable SQLite WAL mode, use explicit transactions, and add migrations. Make SQLite the only supported durable backend for the first usable release. Keep the adapter contract tests as the compatibility gate before beginning WAL optimization.
+4. **Each state change is one short SQLite transaction.** Lease, ack, nack, dead-lettering, topology mutation, retention cleanup, and publish routing use explicit transactions. A transaction either takes effect in full or has no effect after a crash. Use database UTC time, not application-clock time, for lease expiry comparisons.
 
-## Questions
+5. **Retention is explicit and bounded only for dead letters.** Available and leased messages are retained until ack, explicit queue deletion, or dead-lettering; the broker has no message TTL in this release. Dead letters are retained for 30 days by default, configurable per broker from 1 to 365 days. A periodic cleanup transaction deletes only `dead_lettered` rows whose `dead_lettered_at_utc` is older than the configured retention period. Retention configuration and cleanup failures must be observable in logs and health diagnostics.
 
-1. Should all queues and topology share one database file, or should queues be sharded across files?
-2. What durability level is required before publish confirmation: SQLite `FULL` synchronous mode, or a lower-latency setting?
-3. Should non-durable queues exist, and if so, what exactly survives a restart?
-4. How should a crash during lease, ack, nack, or routing recovery be resolved?
-5. What message retention and dead-letter retention policies are required?
-6. What benchmark threshold should justify replacing or supplementing SQLite with WAL?
+6. **Replace SQLite only after an evidence-based gate.** First tune SQLite and the broker's single-writer path. Start a custom-WAL feasibility project only when three 15-minute runs on the supported deployment storage cannot sustain **5,000 durable publishes/second of 1 KiB messages** while keeping publish-confirmation p99 at or below **50 ms**, and profiling attributes at least 60% of publish latency to SQLite commit or writer-lock contention. The decision must include the workload, hardware, SQLite settings, and a contract-test result. Until then, SQLite remains the supported backend.
+
+## Crash and recovery semantics
+
+| Operation | Commit unit and recovery result |
+| --- | --- |
+| Publish and route | Resolve bindings and insert one message row for every destination queue in a single transaction. A crash before commit publishes to no queue; after commit the message is present in every resolved queue. A publish whose client response was lost is an uncertain outcome and the producer must retry with the same stable message ID once that API field exists. |
+| Lease | Atomically select the oldest available or expired-lease row for the queue, assign a new lease ID and expiry, and increment `delivery_count`. A crash before commit leaves it available; after commit it remains leased until expiry, then becomes eligible for redelivery. |
+| Ack | Delete the row only when its lease is active and unexpired. A crash before commit leaves the message leased; after commit it is permanently gone. If the broker commits but the client loses the response, a retry may report an invalid lease; that result is safe because the message was already acknowledged. |
+| Nack with requeue | Clear lease fields in one transaction, preserving `delivery_count`. A crash before commit preserves the lease; after commit the message is immediately available. |
+| Nack without requeue or max-delivery handling | Set `state=dead_lettered`, clear lease fields, and set `dead_lettered_at_utc` and a reason in one transaction. Use `max-delivery-count-exceeded` for automatic dead-lettering and `rejected` for explicit `NackAsync(..., requeue: false)`. |
+| Startup | Run migrations before accepting traffic. SQLite WAL recovery is performed by SQLite when the database opens; no bespoke replay is needed. There is no startup sweep of leases: `LeaseNextAsync` reclaims expired leases atomically. |
+
+## Implementation specification
+
+### Schema and migrations
+
+Create a versioned, idempotent migration runner owned by `RocketMQ.Persistence.Sqlite`. It must run under an exclusive migration lock before the broker is ready, record each migration in `schema_migrations(version, applied_at_utc)`, and fail startup rather than run against a partially migrated schema. Back up the database before a non-additive migration.
+
+The first schema must contain:
+
+- `exchanges(name TEXT PRIMARY KEY, type TEXT NOT NULL, durable INTEGER NOT NULL)`;
+- `queues(name TEXT PRIMARY KEY, durable INTEGER NOT NULL CHECK (durable = 1), max_delivery_count INTEGER NOT NULL CHECK (max_delivery_count >= 0))`;
+- `bindings(exchange_name, queue_name, routing_key, PRIMARY KEY (exchange_name, queue_name, routing_key), FOREIGN KEY ... ON DELETE CASCADE)`;
+- `messages(message_id BLOB PRIMARY KEY, queue_name TEXT NOT NULL REFERENCES queues(name) ON DELETE CASCADE, connection_id BLOB NOT NULL, correlation_id BLOB NOT NULL, payload BLOB NOT NULL, received_at_utc TEXT NOT NULL, enqueued_at_utc TEXT NOT NULL, enqueue_sequence INTEGER NOT NULL UNIQUE, state TEXT NOT NULL, lease_id BLOB NULL UNIQUE, lease_expires_at_utc TEXT NULL, delivery_count INTEGER NOT NULL DEFAULT 0, dead_lettered_at_utc TEXT NULL, dead_letter_reason TEXT NULL)`;
+- `persistence_log(sequence INTEGER PRIMARY KEY, connection_id BLOB NOT NULL, correlation_id BLOB NOT NULL, payload BLOB NOT NULL, received_at_utc TEXT NOT NULL)` for `IPersistenceStore` replay; and
+- `schema_migrations` as described above.
+
+Use ISO-8601 UTC text with a fixed round-trip format for timestamps and a consistent 16-byte GUID representation for all BLOB identifiers. Create indexes for leasing and operations: `(queue_name, state, enqueued_at_utc, enqueue_sequence)`, `(lease_id)`, `(queue_name, state, dead_lettered_at_utc)`, and `bindings(exchange_name)`.
+
+### Transaction and concurrency rules
+
+- Use one shared SQLite database configuration and a single serialized writer path for all mutations. Separate reader connections are allowed.
+- Begin writes with `BEGIN IMMEDIATE`; keep transactions free of network calls and application callbacks.
+- `LeaseNextAsync` must select and update in the same transaction. Its candidate predicate is `state = 'available' OR (state = 'leased' AND lease_expires_at_utc <= now)`, ordered by `enqueued_at_utc, enqueue_sequence`.
+- Before assigning a lease, if the resulting delivery count would exceed the queue's non-zero `max_delivery_count`, transition the row to `dead_lettered` in that transaction and continue looking for the next candidate. Never return that row to a consumer.
+- `AckAsync` and `NackAsync` affect exactly one row matching `lease_id`, `state = 'leased'`, and `lease_expires_at_utc > now`; otherwise they throw `InvalidOperationException`, as required by the port.
+- The synchronous publish path cannot compose `IMessageRouter`, `IRoutingStore`, and `IMessageQueueStore` as independent transactions. Add an internal SQLite broker operation that resolves routing and enqueues every destination using the same connection and transaction. The public Core ports remain adapter-neutral; this is an adapter-internal unit of work used by the runner's durable publish service.
+
+### Required verification
+
+- Make all SQLite adapters pass `PersistenceStoreContractTests`, `MessageQueueStoreContractTests`, and `RoutingStoreContractTests` without weakening those tests.
+- Add SQLite-specific integration tests for migration idempotency, migration failure, WAL recovery after process termination, concurrent leasing, expired-lease redelivery, late ack/nack rejection, automatic dead-lettering, retention cleanup, and all-or-nothing fanout publish.
+- Run `PRAGMA integrity_check` in the crash-recovery integration test and verify that a durable publish is visible after reopening the database.
+
+## Consequences
+
+SQLite delivers a correct, supportable single-node broker with a clear durability boundary. `FULL` synchronous mode trades some throughput for that boundary; performance work starts with batching and the serialized writer rather than a second storage engine. The custom WAL projects remain experimental and must not be registered by the runner until they meet the same contract and benchmark evidence.

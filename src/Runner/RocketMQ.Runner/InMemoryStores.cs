@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,21 +11,40 @@ namespace RocketMQ.Runner;
 
 public class InMemoryMessageQueueStore : IMessageQueueStore
 {
-    private class MessageEntry
+    private enum MessageState
     {
-        public Guid Id { get; set; }
-        public InboundMessage Message { get; set; } = null!;
-        public string State { get; set; } = "available"; // available, leased, dead_lettered
+        Available,
+        Leased,
+        DeadLettered
+    }
+
+    private sealed class MessageEntry
+    {
+        public Guid Id { get; init; }
+        public InboundMessage Message { get; init; } = null!;
+        public MessageState State { get; set; }
         public Guid? LeaseId { get; set; }
-        public DateTime? LeaseExpiresAt { get; set; }
+        public DateTimeOffset? LeaseExpiresAtUtc { get; set; }
         public int DeliveryCount { get; set; }
-        public DateTime EnqueuedAt { get; set; }
+        public long EnqueueSequence { get; init; }
         public DateTimeOffset? DeadLetteredAtUtc { get; set; }
         public string DeadLetterReason { get; set; } = string.Empty;
     }
 
     private readonly ConcurrentDictionary<string, List<MessageEntry>> _queues = new();
+    private readonly IRoutingStore? _routingStore;
+    private readonly TimeProvider _timeProvider;
+    private readonly HashSet<Guid> _expiredLeaseIds = new();
     private readonly object _lock = new();
+    private long _nextEnqueueSequence;
+
+    public InMemoryMessageQueueStore(
+        IRoutingStore? routingStore = null,
+        TimeProvider? timeProvider = null)
+    {
+        _routingStore = routingStore;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public Task<Guid> EnqueueAsync(string queueName, InboundMessage message, CancellationToken ct)
     {
@@ -38,50 +57,70 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
             {
                 Id = id,
                 Message = message,
-                EnqueuedAt = DateTime.UtcNow
+                State = MessageState.Available,
+                EnqueueSequence = _nextEnqueueSequence++
             };
-            if (!_queues.ContainsKey(queueName))
-            {
-                _queues[queueName] = new List<MessageEntry>();
-            }
 
-            _queues[queueName].Add(entry);
+            _queues.GetOrAdd(queueName, static _ => new List<MessageEntry>()).Add(entry);
             return Task.FromResult(id);
         }
     }
 
-    public Task<LeasedMessage?> LeaseNextAsync(string queueName, TimeSpan visibilityTimeout, CancellationToken ct)
+    public async Task<LeasedMessage?> LeaseNextAsync(
+        string queueName,
+        TimeSpan visibilityTimeout,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        ValidateVisibilityTimeout(visibilityTimeout);
+
+        var maxDeliveryCount = await GetMaxDeliveryCountAsync(queueName, ct);
 
         lock (_lock)
         {
             if (!_queues.TryGetValue(queueName, out var queue))
             {
-                return Task.FromResult<LeasedMessage?>(null);
+                return null;
             }
 
-            var now = DateTime.UtcNow;
-            var entry = queue
-                .Where(e => e.State == "available" || (e.State == "leased" && e.LeaseExpiresAt < now))
-                .OrderBy(e => e.EnqueuedAt)
-                .FirstOrDefault();
-
-            if (entry == null)
+            var now = _timeProvider.GetUtcNow();
+            while (true)
             {
-                return Task.FromResult<LeasedMessage?>(null);
+                var entry = queue
+                    .Where(candidate => candidate.State == MessageState.Available ||
+                                        (candidate.State == MessageState.Leased &&
+                                         candidate.LeaseExpiresAtUtc <= now))
+                    .OrderBy(candidate => candidate.EnqueueSequence)
+                    .FirstOrDefault();
+
+                if (entry == null)
+                {
+                    return null;
+                }
+
+                if (entry.State == MessageState.Leased && entry.LeaseId.HasValue)
+                {
+                    _expiredLeaseIds.Add(entry.LeaseId.Value);
+                }
+
+                if (maxDeliveryCount > 0 && entry.DeliveryCount >= maxDeliveryCount)
+                {
+                    MoveToDeadLetters(entry, now, "max-delivery-count-exceeded");
+                    continue;
+                }
+
+                entry.State = MessageState.Leased;
+                entry.LeaseId = Guid.NewGuid();
+                entry.LeaseExpiresAtUtc = now + visibilityTimeout;
+                entry.DeliveryCount++;
+
+                return new LeasedMessage(
+                    entry.Id,
+                    entry.LeaseId.Value,
+                    entry.Message,
+                    entry.DeliveryCount,
+                    entry.LeaseExpiresAtUtc.Value);
             }
-
-            entry.State = "leased";
-            entry.LeaseId = Guid.NewGuid();
-            entry.LeaseExpiresAt = now + visibilityTimeout;
-            entry.DeliveryCount++;
-
-            return Task.FromResult<LeasedMessage?>(new LeasedMessage(
-                entry.LeaseId.Value,
-                entry.Message,
-                entry.DeliveryCount,
-                entry.LeaseExpiresAt.Value));
         }
     }
 
@@ -93,22 +132,24 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
         {
             foreach (var queue in _queues.Values)
             {
-                var entry = queue.FirstOrDefault(e => e.LeaseId == leaseId);
+                var entry = queue.FirstOrDefault(candidate => candidate.LeaseId == leaseId);
                 if (entry == null)
                 {
                     continue;
                 }
 
-                if (entry.State != "leased" || entry.LeaseExpiresAt <= DateTime.UtcNow)
+                if (!HasActiveLease(entry, _timeProvider.GetUtcNow()))
                 {
-                    throw new InvalidOperationException("Invalid lease");
+                    _expiredLeaseIds.Add(leaseId);
+                    throw new InvalidOperationException("Lease expired");
                 }
 
                 queue.Remove(entry);
                 return Task.CompletedTask;
             }
 
-            throw new InvalidOperationException("Lease not found");
+            throw new InvalidOperationException(
+                _expiredLeaseIds.Contains(leaseId) ? "Lease expired" : "Lease not found");
         }
     }
 
@@ -120,37 +161,40 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
         {
             foreach (var queue in _queues.Values)
             {
-                var entry = queue.FirstOrDefault(e => e.LeaseId == leaseId);
+                var entry = queue.FirstOrDefault(candidate => candidate.LeaseId == leaseId);
                 if (entry == null)
                 {
                     continue;
                 }
 
-                if (entry.State != "leased" || entry.LeaseExpiresAt <= DateTime.UtcNow)
+                if (!HasActiveLease(entry, _timeProvider.GetUtcNow()))
                 {
-                    throw new InvalidOperationException("Invalid lease");
+                    _expiredLeaseIds.Add(leaseId);
+                    throw new InvalidOperationException("Lease expired");
                 }
 
-                entry.LeaseId = null;
-                entry.LeaseExpiresAt = null;
                 if (requeue)
                 {
-                    entry.State = "available";
+                    entry.State = MessageState.Available;
+                    entry.LeaseId = null;
+                    entry.LeaseExpiresAtUtc = null;
                 }
                 else
                 {
-                    entry.State = "dead_lettered";
-                    entry.DeadLetteredAtUtc = DateTimeOffset.UtcNow;
+                    MoveToDeadLetters(entry, _timeProvider.GetUtcNow(), "consumer-rejected");
                 }
 
                 return Task.CompletedTask;
             }
 
-            throw new InvalidOperationException("Lease not found");
+            throw new InvalidOperationException(
+                _expiredLeaseIds.Contains(leaseId) ? "Lease expired" : "Lease not found");
         }
     }
 
-    public IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(string queueName, CancellationToken ct)
+    public IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(
+        string queueName,
+        CancellationToken ct)
         => BrowseDeadLettersCoreAsync(queueName, ct);
 
     private async IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersCoreAsync(
@@ -162,14 +206,14 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
         {
             deadLetters = _queues.TryGetValue(queueName, out var entries)
                 ? entries
-                    .Where(e => e.State == "dead_lettered")
-                    .OrderBy(e => e.DeadLetteredAtUtc)
-                    .Select(e => new DeadLetteredMessage(
-                        e.Id,
-                        e.Message,
-                        e.DeliveryCount,
-                        e.DeadLetteredAtUtc ?? DateTimeOffset.MinValue,
-                        e.DeadLetterReason))
+                    .Where(entry => entry.State == MessageState.DeadLettered)
+                    .OrderBy(entry => entry.DeadLetteredAtUtc)
+                    .Select(entry => new DeadLetteredMessage(
+                        entry.Id,
+                        entry.Message,
+                        entry.DeliveryCount,
+                        entry.DeadLetteredAtUtc ?? DateTimeOffset.MinValue,
+                        entry.DeadLetterReason))
                     .ToList()
                 : new List<DeadLetteredMessage>();
         }
@@ -179,6 +223,46 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
             ct.ThrowIfCancellationRequested();
             yield return deadLetter;
             await Task.Yield();
+        }
+    }
+
+    private async Task<int> GetMaxDeliveryCountAsync(string queueName, CancellationToken ct)
+    {
+        if (_routingStore == null)
+        {
+            return 10;
+        }
+
+        var queue = await _routingStore.GetQueueAsync(queueName, ct);
+        return queue?.MaxDeliveryCount ?? 10;
+    }
+
+    private static bool HasActiveLease(MessageEntry entry, DateTimeOffset now)
+        => entry.State == MessageState.Leased &&
+           entry.LeaseId.HasValue &&
+           entry.LeaseExpiresAtUtc.HasValue &&
+           entry.LeaseExpiresAtUtc.Value > now;
+
+    private static void MoveToDeadLetters(
+        MessageEntry entry,
+        DateTimeOffset deadLetteredAtUtc,
+        string reason)
+    {
+        entry.State = MessageState.DeadLettered;
+        entry.LeaseId = null;
+        entry.LeaseExpiresAtUtc = null;
+        entry.DeadLetteredAtUtc = deadLetteredAtUtc;
+        entry.DeadLetterReason = reason;
+    }
+
+    private static void ValidateVisibilityTimeout(TimeSpan visibilityTimeout)
+    {
+        if (visibilityTimeout <= TimeSpan.Zero || visibilityTimeout == Timeout.InfiniteTimeSpan)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(visibilityTimeout),
+                visibilityTimeout,
+                "Visibility timeout must be greater than zero and finite.");
         }
     }
 }
@@ -236,6 +320,12 @@ public class InMemoryRoutingStore : IRoutingStore
     public Task DeclareQueueAsync(QueueDefinition queue, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        if (queue.MaxDeliveryCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(queue),
+                "MaxDeliveryCount cannot be negative.");
+        }
 
         lock (_lock)
         {
