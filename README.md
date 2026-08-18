@@ -19,10 +19,10 @@ Prerequisite: .NET 10 SDK.
 ```powershell
 dotnet restore
 dotnet build --no-restore
-dotnet run --project src/Runner/RocketMQ.Runner
+dotnet run --project src/Runner/RocketMQ.Runner -- --RocketMQ:Persistence:DatabasePath=C:\RocketMQData\rocketmq.db
 ```
 
-The runner listens on `http://localhost:50051` using HTTP/2. It starts an in-memory queue store, routing store, router, bounded channel, and gRPC server. Stop it with `Ctrl+C`.
+`RocketMQ:Persistence:DatabasePath` is required and must be an absolute path on local storage. The runner creates its parent directory, uses SQLite WAL with `synchronous=FULL`, and listens on `http://localhost:50051` using HTTP/2. Stop it with `Ctrl+C`.
 
 ## Message flow
 

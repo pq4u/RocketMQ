@@ -1,21 +1,22 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\..\Core\RocketMQ.Core\RocketMQ.Core.csproj" />
-      <ProjectReference Include="..\..\Transport\RocketMQ.Transport.Grpc\RocketMQ.Transport.Grpc.csproj" />
-      <ProjectReference Include="..\..\Persistence\RocketMQ.Persistence.Wal\RocketMQ.Persistence.Wal.csproj" />
-      <ProjectReference Include="..\..\Persistence\RocketMQ.Persistence.Sqlite\RocketMQ.Persistence.Sqlite.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\RocketMQ.Core\RocketMQ.Core.csproj" />
+    <ProjectReference Include="..\..\Transport\RocketMQ.Transport.Grpc\RocketMQ.Transport.Grpc.csproj" />
+    <ProjectReference Include="..\..\Persistence\RocketMQ.Persistence.Sqlite\RocketMQ.Persistence.Sqlite.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
+  </ItemGroup>
 
-    <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net10.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
-
+  <ItemGroup>
+    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -14,16 +14,21 @@ public static class Program
             .ConfigureServices((context, services) =>
             {
                 var databasePath = context.Configuration["RocketMQ:Persistence:DatabasePath"];
-                if (string.IsNullOrWhiteSpace(databasePath) || !Path.IsPathFullyQualified(databasePath) || databasePath.StartsWith("\\\\", StringComparison.Ordinal))
+                if (string.IsNullOrWhiteSpace(databasePath)
+                    || !Path.IsPathFullyQualified(databasePath)
+                    || databasePath.StartsWith("\\\\", StringComparison.Ordinal))
                 {
-                    throw new InvalidOperationException("RocketMQ:Persistence:DatabasePath must be an absolute path on local storage.");
+                    throw new InvalidOperationException(
+                        "Configure RocketMQ:Persistence:DatabasePath with an absolute local path, for example --RocketMQ:Persistence:DatabasePath=C:\\RocketMQData\\rocketmq.db.");
                 }
 
                 var directory = Path.GetDirectoryName(databasePath);
-                if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+                if (string.IsNullOrWhiteSpace(directory))
                 {
-                    throw new InvalidOperationException("The configured SQLite database directory must already exist.");
+                    throw new InvalidOperationException("The configured SQLite database path must include a directory.");
                 }
+
+                Directory.CreateDirectory(directory);
 
                 var connectionString = $"Data Source={databasePath};Mode=ReadWriteCreate;Cache=Shared";
                 services.AddSingleton(new SqliteDatabase(connectionString));
@@ -37,6 +42,7 @@ public static class Program
                 services.AddHostedService<SqliteMaintenanceHostedService>();
             })
             .Build();
+
         await host.RunAsync();
     }
 }

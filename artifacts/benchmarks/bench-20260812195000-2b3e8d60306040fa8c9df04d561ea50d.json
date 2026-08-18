@@ -1,0 +1,56 @@
+{
+  "RunId": "bench-20260812195000-2b3e8d60306040fa8c9df04d561ea50d",
+  "StartedAtUtc": "2026-08-12T19:50:31.102497+00:00",
+  "CompletedAtUtc": "2026-08-12T20:05:31.1225334+00:00",
+  "Endpoint": "http://localhost:50051/",
+  "DatabasePath": "D:\\RocketMQData\\rocketmq.db",
+  "Scenario": {
+    "Routing": "Direct",
+    "QueueCount": 1,
+    "Workers": 32,
+    "PayloadBytes": 1024,
+    "Warmup": "00:00:30",
+    "Duration": "00:15:00",
+    "ExchangeName": "bench-20260812195000-2b3e8d60306040fa8c9df04d561ea50d.exchange",
+    "QueueNames": [
+      "bench-20260812195000-2b3e8d60306040fa8c9df04d561ea50d.queue.1"
+    ]
+  },
+  "Counts": {
+    "Attempts": 82179,
+    "Accepted": 82147,
+    "Unroutable": 0,
+    "Failed": 32
+  },
+  "ThroughputPerSecond": 91.2724124771496,
+  "Latency": {
+    "Count": 82179,
+    "MinMilliseconds": 13.103,
+    "P50Milliseconds": 364.5853,
+    "P95Milliseconds": 552.6613,
+    "P99Milliseconds": 660.1519,
+    "MaxMilliseconds": 1403.8745
+  },
+  "Errors": {
+    "Cancelled": 32
+  },
+  "StorageBefore": {
+    "DatabaseBytes": 4096,
+    "WalBytes": 82432,
+    "ShmBytes": 32768,
+    "AvailableDiskBytes": 22426869760
+  },
+  "StorageAfter": {
+    "DatabaseBytes": 191406080,
+    "WalBytes": 4198312,
+    "ShmBytes": 32768,
+    "AvailableDiskBytes": 22231339008
+  },
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26100",
+    "Framework": ".NET 10.0.0-rc.1.25451.107",
+    "ProcessArchitecture": "X64",
+    "ProcessorCount": 12,
+    "MachineName": "PABLITO"
+  }
+}

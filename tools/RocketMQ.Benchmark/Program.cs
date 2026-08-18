@@ -1,0 +1,214 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text.Json;
+using Google.Protobuf;
+using Grpc.Core;
+using Grpc.Net.Client;
+using RocketMQ.Transport.Grpc.Protos;
+
+namespace RocketMQ.Benchmark;
+
+public static class Program
+{
+    public static async Task<int> Main(string[] args)
+    {
+        try
+        {
+            var options = BenchmarkOptions.Parse(args);
+            var report = await new BenchmarkRunner(options).RunAsync(CancellationToken.None);
+            var resultsDirectory = Path.GetFullPath(options.ResultsDirectory);
+            Directory.CreateDirectory(resultsDirectory);
+            var reportPath = Path.Combine(resultsDirectory, $"{report.RunId}.json");
+            await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+            PrintSummary(report, reportPath);
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Benchmark cancelled.");
+            return 2;
+        }
+        catch (ArgumentException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 2;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Benchmark failed: {exception.Message}");
+            return 1;
+        }
+    }
+
+    private static void PrintSummary(BenchmarkReport report, string reportPath)
+    {
+        Console.WriteLine($"Run: {report.RunId}");
+        Console.WriteLine($"Accepted: {report.Counts.Accepted:N0}/{report.Counts.Attempts:N0}; throughput: {report.ThroughputPerSecond:N2} publish/s");
+        Console.WriteLine($"Latency ms: p50={report.Latency.P50Milliseconds:N2}, p95={report.Latency.P95Milliseconds:N2}, p99={report.Latency.P99Milliseconds:N2}, max={report.Latency.MaxMilliseconds:N2}");
+        Console.WriteLine($"Storage bytes: db={report.StorageAfter.DatabaseBytes:N0}, wal={report.StorageAfter.WalBytes:N0}, shm={report.StorageAfter.ShmBytes:N0}");
+        Console.WriteLine($"Report: {reportPath}");
+    }
+}
+
+public sealed class BenchmarkRunner
+{
+    private readonly BenchmarkOptions _options;
+
+    public BenchmarkRunner(BenchmarkOptions options) => _options = options;
+
+    public async Task<BenchmarkReport> RunAsync(CancellationToken ct)
+    {
+        if (!File.Exists(_options.DatabasePath))
+        {
+            throw new ArgumentException("--database-path must point to the SQLite database created by the running broker.");
+        }
+
+        var runId = $"bench-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+        var exchangeName = $"{runId}.exchange";
+        var queueNames = Enumerable.Range(1, _options.QueueCount).Select(index => $"{runId}.queue.{index}").ToArray();
+        var storageBefore = CaptureStorage(_options.DatabasePath);
+        using var channel = GrpcChannel.ForAddress(_options.Endpoint);
+        var admin = new Admin.AdminClient(channel);
+        var producer = new Producer.ProducerClient(channel);
+        await DeclareTopologyAsync(admin, exchangeName, queueNames, ct);
+
+        var payload = CreatePayload(_options.PayloadBytes);
+        await SendForAsync(producer, exchangeName, payload, _options.Warmup, measure: null, ct);
+        var startedAtUtc = DateTimeOffset.UtcNow;
+        var measurement = new Measurement();
+        await SendForAsync(producer, exchangeName, payload, _options.Duration, measurement, ct);
+        var completedAtUtc = DateTimeOffset.UtcNow;
+        var durationSeconds = Math.Max((completedAtUtc - startedAtUtc).TotalSeconds, double.Epsilon);
+        var storageAfter = CaptureStorage(_options.DatabasePath);
+        var counts = measurement.Counts();
+
+        return new BenchmarkReport(
+            runId,
+            startedAtUtc,
+            completedAtUtc,
+            _options.Endpoint.ToString(),
+            _options.DatabasePath,
+            new BenchmarkScenario(_options.Routing.ToString(), _options.QueueCount, _options.Workers, _options.PayloadBytes, _options.Warmup, _options.Duration, exchangeName, queueNames),
+            counts,
+            counts.Accepted / durationSeconds,
+            LatencyStatistics.FromTicks(measurement.Latencies),
+            measurement.Errors.OrderBy(pair => pair.Key).ToDictionary(pair => pair.Key, pair => pair.Value),
+            storageBefore,
+            storageAfter,
+            BenchmarkEnvironment.Capture());
+    }
+
+    private async Task DeclareTopologyAsync(Admin.AdminClient admin, string exchangeName, IReadOnlyList<string> queueNames, CancellationToken ct)
+    {
+        var exchangeType = _options.Routing == RoutingMode.Direct ? "direct" : "fanout";
+        await admin.DeclareExchangeAsync(new DeclareExchangeRequest { ExchangeName = exchangeName, ExchangeType = exchangeType }, cancellationToken: ct);
+        foreach (var queueName in queueNames)
+        {
+            await admin.DeclareQueueAsync(new DeclareQueueRequest { QueueName = queueName }, cancellationToken: ct);
+            await admin.BindAsync(new BindRequest { ExchangeName = exchangeName, QueueName = queueName, RoutingKey = _options.Routing == RoutingMode.Direct ? "benchmark" : string.Empty }, cancellationToken: ct);
+        }
+    }
+
+    private async Task SendForAsync(Producer.ProducerClient producer, string exchangeName, ByteString payload, TimeSpan duration, Measurement? measure, CancellationToken ct)
+    {
+        if (duration == TimeSpan.Zero)
+        {
+            return;
+        }
+
+        using var durationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        durationCts.CancelAfter(duration);
+        var tasks = Enumerable.Range(0, _options.Workers)
+            .Select(_ => SendWorkerAsync(producer, exchangeName, payload, measure, durationCts.Token))
+            .ToArray();
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task SendWorkerAsync(Producer.ProducerClient producer, string exchangeName, ByteString payload, Measurement? measure, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var started = Stopwatch.GetTimestamp();
+            try
+            {
+                var response = await producer.PublishAsync(new PublishRequest
+                {
+                    ExchangeName = exchangeName,
+                    RoutingKey = _options.Routing == RoutingMode.Direct ? "benchmark" : string.Empty,
+                    Payload = payload,
+                    CorrelationId = Guid.NewGuid().ToString(),
+                    PublishId = Guid.NewGuid().ToString()
+                }, cancellationToken: ct);
+                measure?.RecordResponse(response, Stopwatch.GetTimestamp() - started);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (RpcException exception)
+            {
+                measure?.RecordError(exception.StatusCode.ToString(), Stopwatch.GetTimestamp() - started);
+            }
+            catch (Exception exception)
+            {
+                measure?.RecordError(exception.GetType().Name, Stopwatch.GetTimestamp() - started);
+            }
+        }
+    }
+
+    private static ByteString CreatePayload(int length)
+    {
+        var payload = new byte[length];
+        for (var index = 0; index < payload.Length; index++)
+        {
+            payload[index] = (byte)(index % 251);
+        }
+
+        return ByteString.CopyFrom(payload);
+    }
+
+    private static StorageSnapshot CaptureStorage(string databasePath)
+    {
+        var root = Path.GetPathRoot(Path.GetFullPath(databasePath));
+        var drive = root is null ? null : new DriveInfo(root);
+        return new StorageSnapshot(FileLength(databasePath), FileLength(databasePath + "-wal"), FileLength(databasePath + "-shm"), drive?.AvailableFreeSpace ?? 0);
+    }
+
+    private static long FileLength(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
+
+    private sealed class Measurement
+    {
+        private long _attempts;
+        private long _accepted;
+        private long _unroutable;
+        private long _failed;
+
+        public ConcurrentBag<long> Latencies { get; } = [];
+        public ConcurrentDictionary<string, long> Errors { get; } = new(StringComparer.Ordinal);
+
+        public void RecordResponse(PublishResponse response, long elapsedTicks)
+        {
+            Interlocked.Increment(ref _attempts);
+            Latencies.Add(elapsedTicks);
+            if (StringComparer.Ordinal.Equals(response.Status, "Accepted"))
+            {
+                Interlocked.Increment(ref _accepted);
+            }
+            else
+            {
+                Interlocked.Increment(ref _unroutable);
+            }
+        }
+
+        public void RecordError(string category, long elapsedTicks)
+        {
+            Interlocked.Increment(ref _attempts);
+            Interlocked.Increment(ref _failed);
+            Latencies.Add(elapsedTicks);
+            Errors.AddOrUpdate(category, 1, static (_, count) => count + 1);
+        }
+
+        public BenchmarkCounts Counts() => new(_attempts, _accepted, _unroutable, _failed);
+    }
+}
+

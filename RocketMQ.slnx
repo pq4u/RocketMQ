@@ -19,8 +19,12 @@
   <Folder Name="/src/Transport/">
     <Project Path="src/Transport/RocketMQ.Transport.Grpc/RocketMQ.Transport.Grpc.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/RocketMQ.Benchmark/RocketMQ.Benchmark.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RocketMQ.Architecture.Tests/RocketMQ.Architecture.Tests.csproj" />
+    <Project Path="tests/RocketMQ.Benchmark.Tests/RocketMQ.Benchmark.Tests.csproj" />
     <Project Path="tests/RocketMQ.Contract.Tests/RocketMQ.Contract.Tests.csproj" />
     <Project Path="tests/RocketMQ.Runner.Unit.Tests/RocketMQ.Runner.Unit.Tests.csproj" />
     <Project Path="tests/RocketMQ.Transport.Grpc.Tests/RocketMQ.Transport.Grpc.Tests.csproj" />
