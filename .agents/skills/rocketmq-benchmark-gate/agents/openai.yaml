@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ Benchmark Gate"
+  short_description: "Run comparable persistence performance evaluations"
+  default_prompt: "Use $rocketmq-benchmark-gate to run or assess the RocketMQ persistence benchmark gate."
+policy:
+  allow_implicit_invocation: false

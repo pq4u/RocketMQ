@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ Routing Property Tests"
+  short_description: "Stress routing and topic matching invariants"
+  default_prompt: "Use $rocketmq-routing-property-tests to strengthen routing tests for this change."
+policy:
+  allow_implicit_invocation: true

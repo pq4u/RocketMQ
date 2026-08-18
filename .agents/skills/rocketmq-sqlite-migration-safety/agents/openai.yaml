@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ SQLite Migration Safety"
+  short_description: "Evolve SQLite schema without data loss"
+  default_prompt: "Use $rocketmq-sqlite-migration-safety to design and verify this SQLite schema change."
+policy:
+  allow_implicit_invocation: true

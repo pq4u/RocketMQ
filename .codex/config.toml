@@ -1,0 +1,11 @@
+# Repository-wide Codex defaults. Personal model and service-tier choices belong
+# in the user-level config so contributors can choose their preferred profile.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
+model_reasoning_effort = "high"
+
+[features]
+hooks = true
+multi_agent = true
+shell_snapshot = true

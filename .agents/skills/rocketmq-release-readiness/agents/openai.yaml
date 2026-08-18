@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ Release Readiness"
+  short_description: "Produce a verified pre-release quality report"
+  default_prompt: "Use $rocketmq-release-readiness to assess whether RocketMQ is ready for release."
+policy:
+  allow_implicit_invocation: false

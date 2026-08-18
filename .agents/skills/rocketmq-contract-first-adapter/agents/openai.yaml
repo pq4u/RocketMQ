@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ Contract-First Adapter"
+  short_description: "Implement adapters against shared contracts"
+  default_prompt: "Use $rocketmq-contract-first-adapter to implement or review this persistence adapter change."
+policy:
+  allow_implicit_invocation: true

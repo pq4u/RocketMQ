@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ gRPC API Evolution"
+  short_description: "Keep protobuf, server, SDK, and examples aligned"
+  default_prompt: "Use $rocketmq-grpc-api-evolution to evolve this RocketMQ gRPC API safely."
+policy:
+  allow_implicit_invocation: true

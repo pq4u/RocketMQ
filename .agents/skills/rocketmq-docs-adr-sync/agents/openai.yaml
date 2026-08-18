@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ Docs and ADR Sync"
+  short_description: "Keep documentation consistent with implemented code"
+  default_prompt: "Use $rocketmq-docs-adr-sync to reconcile RocketMQ documentation with the current implementation."
+policy:
+  allow_implicit_invocation: true

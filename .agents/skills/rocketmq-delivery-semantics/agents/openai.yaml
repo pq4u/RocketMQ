@@ -1,0 +1,6 @@
+interface:
+  display_name: "RocketMQ Delivery Semantics"
+  short_description: "Protect lease, ack, redelivery, and FIFO rules"
+  default_prompt: "Use $rocketmq-delivery-semantics to implement or review this delivery behavior change."
+policy:
+  allow_implicit_invocation: true
