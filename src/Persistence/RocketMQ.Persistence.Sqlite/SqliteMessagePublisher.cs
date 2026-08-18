@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Diagnostics;
 using RocketMQ.Core.Models;
 using RocketMQ.Core.Routing;
 
@@ -16,22 +18,45 @@ public sealed class SqliteMessagePublisher : IMessagePublisher
     public Task<PublishResult> PublishAsync(Guid publishId, Envelope envelope, CancellationToken ct)
         => _database.WriteAsync(async (connection, transaction, token) =>
         {
+            var diagnostics = Activity.Current?.GetTagItem(PublishDiagnosticTags.Enabled) is true
+                ? Activity.Current
+                : null;
+            var stageStarted = Stopwatch.GetTimestamp();
             await SqliteDatabase.ExecuteNonQueryAsync(connection, transaction, "DELETE FROM publications WHERE created_at_utc < $cutoff;", token, ("$cutoff", SqliteDatabase.UtcText(DateTimeOffset.UtcNow.AddHours(-24))));
+            SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.CleanupMilliseconds, stageStarted);
+
+            stageStarted = Stopwatch.GetTimestamp();
             var fingerprint = Fingerprint(envelope);
+            SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.FingerprintMilliseconds, stageStarted);
+
+            stageStarted = Stopwatch.GetTimestamp();
             var existing = await FindPublicationAsync(connection, transaction, publishId, token);
+            SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.IdempotencyLookupMilliseconds, stageStarted);
             if (existing is not null)
             {
                 if (!StringComparer.Ordinal.Equals(existing.Value.Fingerprint, fingerprint))
+                {
                     throw new InvalidOperationException("Publish ID was already used with different message data.");
-                return await ReadResultAsync(connection, transaction, publishId, existing.Value.MessageId, existing.Value.Status, token);
+                }
+
+                stageStarted = Stopwatch.GetTimestamp();
+                var existingResult = await ReadResultAsync(connection, transaction, publishId, existing.Value.MessageId, existing.Value.Status, token);
+                SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.ResultReadMilliseconds, stageStarted);
+                return existingResult;
             }
 
+            stageStarted = Stopwatch.GetTimestamp();
             var exchange = await FindExchangeAsync(connection, transaction, envelope.ExchangeName, token)
                 ?? throw new KeyNotFoundException($"Exchange '{envelope.ExchangeName}' does not exist.");
+            SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.ExchangeLookupMilliseconds, stageStarted);
+
+            stageStarted = Stopwatch.GetTimestamp();
             var destinations = await ResolveDestinationsAsync(connection, transaction, exchange, envelope.RoutingKey, token);
+            SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.RoutingMilliseconds, stageStarted);
             var messageId = Guid.NewGuid();
             var status = destinations.Count == 0 ? PublishStatus.Unroutable : PublishStatus.Accepted;
 
+            stageStarted = Stopwatch.GetTimestamp();
             await SqliteDatabase.ExecuteNonQueryAsync(connection, transaction, """
                 INSERT INTO publications(publish_id, message_id, request_fingerprint, status, created_at_utc)
                 VALUES ($publishId, $messageId, $fingerprint, $status, $createdAt);
@@ -41,7 +66,9 @@ public sealed class SqliteMessagePublisher : IMessagePublisher
                 ("$fingerprint", fingerprint),
                 ("$status", (int)status),
                 ("$createdAt", SqliteDatabase.UtcNowText()));
+            SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.PublicationInsertMilliseconds, stageStarted);
 
+            stageStarted = Stopwatch.GetTimestamp();
             foreach (var queueName in destinations)
             {
                 await SqliteMessageQueueStore.InsertMessageAsync(connection, transaction, queueName, messageId, envelope.Message, token);
@@ -49,6 +76,7 @@ public sealed class SqliteMessagePublisher : IMessagePublisher
                     "INSERT INTO publication_destinations(publish_id, queue_name) VALUES ($publishId, $queue);", token,
                     ("$publishId", SqliteDatabase.GuidBytes(publishId)), ("$queue", queueName));
             }
+            SqliteDatabase.SetElapsed(diagnostics, PublishDiagnosticTags.EnqueueMilliseconds, stageStarted);
             return new PublishResult(publishId, messageId, status, destinations);
         }, ct);
 

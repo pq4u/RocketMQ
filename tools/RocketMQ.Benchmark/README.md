@@ -14,6 +14,22 @@ dotnet run --project tools/RocketMQ.Benchmark -- `
 
 Defaults are a 30-second warm-up and 15-minute direct scenario with one queue, 32 closed-loop workers, and 1 KiB payloads. Reports are written to `artifacts/benchmarks/<run-id>.json`.
 
+To include an opt-in server-side timing breakdown in the JSON report, run both
+the broker and benchmark from the same build and add:
+
+```powershell
+dotnet run --project tools/RocketMQ.Benchmark -- `
+  --endpoint http://localhost:50051 `
+  --database-path D:\RocketMQData\rocketmq.db `
+  --detailed-timings true
+```
+
+Detailed timings report distributions for writer-gate wait, connection open,
+transaction begin/work/commit, publication cleanup, fingerprinting, idempotency
+lookup, exchange lookup, routing, publication insert, queue inserts, and the
+remaining client/transport time. Instrumentation is disabled by default so the
+standard baseline remains comparable with older runs.
+
 For a fanout scenario:
 
 ```powershell

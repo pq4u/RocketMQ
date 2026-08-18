@@ -12,6 +12,7 @@ message PublishRequest {
   bytes payload = 3;
   string correlation_id = 4;
   string publish_id = 5;
+  bool include_diagnostics = 6;
 }
 
 message PublishResponse {
@@ -20,6 +21,24 @@ message PublishResponse {
   string publish_id = 3;
   string status = 4;
   repeated string destination_queues = 5;
+  PublishDiagnostics diagnostics = 6;
+}
+
+message PublishDiagnostics {
+  double server_total_ms = 1;
+  double writer_wait_ms = 2;
+  double connection_open_ms = 3;
+  double transaction_begin_ms = 4;
+  double transaction_work_ms = 5;
+  double transaction_commit_ms = 6;
+  double cleanup_ms = 7;
+  double fingerprint_ms = 8;
+  double idempotency_lookup_ms = 9;
+  double exchange_lookup_ms = 10;
+  double routing_ms = 11;
+  double publication_insert_ms = 12;
+  double enqueue_ms = 13;
+  double result_read_ms = 14;
 }
 
 service Consumer {

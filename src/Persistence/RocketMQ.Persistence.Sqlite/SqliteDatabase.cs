@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.Sqlite;
+using RocketMQ.Core.Diagnostics;
 
 namespace RocketMQ.Persistence.Sqlite;
 
@@ -27,15 +29,30 @@ public sealed class SqliteDatabase
         CancellationToken ct)
     {
         await EnsureInitializedAsync(ct);
+        var diagnostics = Activity.Current?.GetTagItem(PublishDiagnosticTags.Enabled) is true
+            ? Activity.Current
+            : null;
+        var stageStarted = Stopwatch.GetTimestamp();
         await _writerGate.WaitAsync(ct);
+        SetElapsed(diagnostics, PublishDiagnosticTags.WriterWaitMilliseconds, stageStarted);
         try
         {
+            stageStarted = Stopwatch.GetTimestamp();
             await using var connection = await OpenConnectionAsync(ct);
+            SetElapsed(diagnostics, PublishDiagnosticTags.ConnectionOpenMilliseconds, stageStarted);
+
+            stageStarted = Stopwatch.GetTimestamp();
             using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            SetElapsed(diagnostics, PublishDiagnosticTags.TransactionBeginMilliseconds, stageStarted);
             try
             {
+                stageStarted = Stopwatch.GetTimestamp();
                 var result = await action(connection, transaction, ct);
+                SetElapsed(diagnostics, PublishDiagnosticTags.TransactionWorkMilliseconds, stageStarted);
+
+                stageStarted = Stopwatch.GetTimestamp();
                 transaction.Commit();
+                SetElapsed(diagnostics, PublishDiagnosticTags.TransactionCommitMilliseconds, stageStarted);
                 return result;
             }
             catch
@@ -192,5 +209,13 @@ public sealed class SqliteDatabase
     internal static DateTimeOffset ReadUtc(SqliteDataReader reader, int ordinal) => DateTimeOffset.Parse(reader.GetString(ordinal), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
     internal static byte[] GuidBytes(Guid value) => value.ToByteArray();
     internal static Guid ReadGuid(SqliteDataReader reader, int ordinal) => new((byte[])reader.GetValue(ordinal));
+
+    internal static void SetElapsed(Activity? activity, string tag, long started)
+    {
+        if (activity is not null)
+        {
+            activity.SetTag(tag, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        }
+    }
 }
 

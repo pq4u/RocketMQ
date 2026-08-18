@@ -45,6 +45,11 @@ public static class Program
         Console.WriteLine($"Run: {report.RunId}");
         Console.WriteLine($"Accepted: {report.Counts.Accepted:N0}/{report.Counts.Attempts:N0}; throughput: {report.ThroughputPerSecond:N2} publish/s");
         Console.WriteLine($"Latency ms: p50={report.Latency.P50Milliseconds:N2}, p95={report.Latency.P95Milliseconds:N2}, p99={report.Latency.P99Milliseconds:N2}, max={report.Latency.MaxMilliseconds:N2}");
+        if (report.DetailedTimings is { } timings)
+        {
+            Console.WriteLine($"Mean timing ms: server={timings.ServerTotal.MeanMilliseconds:N2}, writer-wait={timings.WriterWait.MeanMilliseconds:N2}, work={timings.TransactionWork.MeanMilliseconds:N2}, commit={timings.TransactionCommit.MeanMilliseconds:N2}, client/transport={timings.ClientAndTransport.MeanMilliseconds:N2}");
+            Console.WriteLine($"Mean SQL work ms: cleanup={timings.Cleanup.MeanMilliseconds:N2}, fingerprint={timings.Fingerprint.MeanMilliseconds:N2}, idempotency={timings.IdempotencyLookup.MeanMilliseconds:N2}, exchange={timings.ExchangeLookup.MeanMilliseconds:N2}, routing={timings.Routing.MeanMilliseconds:N2}, publication={timings.PublicationInsert.MeanMilliseconds:N2}, enqueue={timings.Enqueue.MeanMilliseconds:N2}");
+        }
         Console.WriteLine($"Storage bytes: db={report.StorageAfter.DatabaseBytes:N0}, wal={report.StorageAfter.WalBytes:N0}, shm={report.StorageAfter.ShmBytes:N0}");
         Console.WriteLine($"Report: {reportPath}");
     }
@@ -88,10 +93,11 @@ public sealed class BenchmarkRunner
             completedAtUtc,
             _options.Endpoint.ToString(),
             _options.DatabasePath,
-            new BenchmarkScenario(_options.Routing.ToString(), _options.QueueCount, _options.Workers, _options.PayloadBytes, _options.Warmup, _options.Duration, exchangeName, queueNames),
+            new BenchmarkScenario(_options.Routing.ToString(), _options.QueueCount, _options.Workers, _options.PayloadBytes, _options.Warmup, _options.Duration, _options.DetailedTimings, exchangeName, queueNames),
             counts,
             counts.Accepted / durationSeconds,
             LatencyStatistics.FromTicks(measurement.Latencies),
+            measurement.BuildTimings(),
             measurement.Errors.OrderBy(pair => pair.Key).ToDictionary(pair => pair.Key, pair => pair.Value),
             storageBefore,
             storageAfter,
@@ -137,7 +143,8 @@ public sealed class BenchmarkRunner
                     RoutingKey = _options.Routing == RoutingMode.Direct ? "benchmark" : string.Empty,
                     Payload = payload,
                     CorrelationId = Guid.NewGuid().ToString(),
-                    PublishId = Guid.NewGuid().ToString()
+                    PublishId = Guid.NewGuid().ToString(),
+                    IncludeDiagnostics = measure is not null && _options.DetailedTimings
                 }, cancellationToken: ct);
                 measure?.RecordResponse(response, Stopwatch.GetTimestamp() - started);
             }
@@ -182,6 +189,7 @@ public sealed class BenchmarkRunner
         private long _accepted;
         private long _unroutable;
         private long _failed;
+        private readonly TimingMeasurement _timings = new();
 
         public ConcurrentBag<long> Latencies { get; } = [];
         public ConcurrentDictionary<string, long> Errors { get; } = new(StringComparer.Ordinal);
@@ -190,6 +198,10 @@ public sealed class BenchmarkRunner
         {
             Interlocked.Increment(ref _attempts);
             Latencies.Add(elapsedTicks);
+            if (response.Diagnostics is not null)
+            {
+                _timings.Record(response.Diagnostics, elapsedTicks);
+            }
             if (StringComparer.Ordinal.Equals(response.Status, "Accepted"))
             {
                 Interlocked.Increment(ref _accepted);
@@ -209,6 +221,68 @@ public sealed class BenchmarkRunner
         }
 
         public BenchmarkCounts Counts() => new(_attempts, _accepted, _unroutable, _failed);
+        public PublishTimingBreakdown? BuildTimings() => _timings.Build();
+    }
+
+    private sealed class TimingMeasurement
+    {
+        private long _count;
+        private readonly ConcurrentBag<double> _serverTotal = [];
+        private readonly ConcurrentBag<double> _writerWait = [];
+        private readonly ConcurrentBag<double> _connectionOpen = [];
+        private readonly ConcurrentBag<double> _transactionBegin = [];
+        private readonly ConcurrentBag<double> _transactionWork = [];
+        private readonly ConcurrentBag<double> _transactionCommit = [];
+        private readonly ConcurrentBag<double> _cleanup = [];
+        private readonly ConcurrentBag<double> _fingerprint = [];
+        private readonly ConcurrentBag<double> _idempotencyLookup = [];
+        private readonly ConcurrentBag<double> _exchangeLookup = [];
+        private readonly ConcurrentBag<double> _routing = [];
+        private readonly ConcurrentBag<double> _publicationInsert = [];
+        private readonly ConcurrentBag<double> _enqueue = [];
+        private readonly ConcurrentBag<double> _resultRead = [];
+        private readonly ConcurrentBag<double> _clientAndTransport = [];
+
+        public void Record(PublishDiagnostics timing, long elapsedTicks)
+        {
+            Interlocked.Increment(ref _count);
+            _serverTotal.Add(timing.ServerTotalMs);
+            _writerWait.Add(timing.WriterWaitMs);
+            _connectionOpen.Add(timing.ConnectionOpenMs);
+            _transactionBegin.Add(timing.TransactionBeginMs);
+            _transactionWork.Add(timing.TransactionWorkMs);
+            _transactionCommit.Add(timing.TransactionCommitMs);
+            _cleanup.Add(timing.CleanupMs);
+            _fingerprint.Add(timing.FingerprintMs);
+            _idempotencyLookup.Add(timing.IdempotencyLookupMs);
+            _exchangeLookup.Add(timing.ExchangeLookupMs);
+            _routing.Add(timing.RoutingMs);
+            _publicationInsert.Add(timing.PublicationInsertMs);
+            _enqueue.Add(timing.EnqueueMs);
+            _resultRead.Add(timing.ResultReadMs);
+            var endToEndMilliseconds = elapsedTicks * 1000d / Stopwatch.Frequency;
+            _clientAndTransport.Add(Math.Max(0, endToEndMilliseconds - timing.ServerTotalMs));
+        }
+
+        public PublishTimingBreakdown? Build()
+            => Interlocked.Read(ref _count) == 0
+                ? null
+                : new PublishTimingBreakdown(
+                    LatencyStatistics.FromMilliseconds(_serverTotal),
+                    LatencyStatistics.FromMilliseconds(_writerWait),
+                    LatencyStatistics.FromMilliseconds(_connectionOpen),
+                    LatencyStatistics.FromMilliseconds(_transactionBegin),
+                    LatencyStatistics.FromMilliseconds(_transactionWork),
+                    LatencyStatistics.FromMilliseconds(_transactionCommit),
+                    LatencyStatistics.FromMilliseconds(_cleanup),
+                    LatencyStatistics.FromMilliseconds(_fingerprint),
+                    LatencyStatistics.FromMilliseconds(_idempotencyLookup),
+                    LatencyStatistics.FromMilliseconds(_exchangeLookup),
+                    LatencyStatistics.FromMilliseconds(_routing),
+                    LatencyStatistics.FromMilliseconds(_publicationInsert),
+                    LatencyStatistics.FromMilliseconds(_enqueue),
+                    LatencyStatistics.FromMilliseconds(_resultRead),
+                    LatencyStatistics.FromMilliseconds(_clientAndTransport));
     }
 }
 

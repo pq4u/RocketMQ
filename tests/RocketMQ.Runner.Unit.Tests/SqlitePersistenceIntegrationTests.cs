@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using RocketMQ.Core.Diagnostics;
 using RocketMQ.Core.Models;
 using RocketMQ.Persistence.Sqlite;
 
@@ -70,6 +72,25 @@ public sealed class SqlitePersistenceIntegrationTests : IAsyncLifetime
         await foreach (var row in _queues.BrowseDeadLettersAsync("limited", CancellationToken.None)) deadLetters.Add(row);
         Assert.Equal("max-delivery-count-exceeded", Assert.Single(deadLetters).Reason);
         Assert.NotNull(lease);
+    }
+
+    [Fact]
+    public async Task Publish_DiagnosticsEnabled_RecordsWriterAndSqlStages()
+    {
+        await _routing.DeclareExchangeAsync(new Exchange("diagnostics", ExchangeType.Direct, true), CancellationToken.None);
+        await _routing.DeclareQueueAsync(new QueueDefinition("diagnostics", true, 3), CancellationToken.None);
+        await _routing.BindAsync(new Binding("diagnostics", "diagnostics", "key"), CancellationToken.None);
+        using var activity = new Activity("publish-diagnostics").Start();
+        activity.SetTag(PublishDiagnosticTags.Enabled, true);
+
+        await _publisher.PublishAsync(Guid.NewGuid(), Envelope("diagnostics", "key"), CancellationToken.None);
+
+        Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.WriterWaitMilliseconds));
+        Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.ConnectionOpenMilliseconds));
+        Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.TransactionWorkMilliseconds));
+        Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.TransactionCommitMilliseconds));
+        Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.CleanupMilliseconds));
+        Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.EnqueueMilliseconds));
     }
 
     private static Envelope Envelope(string exchange, string routingKey) => new(exchange, routingKey, new InboundMessage(Guid.NewGuid(), Guid.NewGuid(), new byte[] { 1, 2, 3 }, DateTimeOffset.UtcNow));

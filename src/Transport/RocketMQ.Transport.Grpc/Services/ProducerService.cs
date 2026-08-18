@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Grpc.Core;
 using RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Diagnostics;
 using RocketMQ.Core.Models;
 using RocketMQ.Transport.Grpc.Protos;
 
@@ -20,6 +22,11 @@ public sealed class ProducerService : Producer.ProducerBase
         var correlationId = string.IsNullOrWhiteSpace(request.CorrelationId) ? Guid.NewGuid() : Guid.Parse(request.CorrelationId);
         var publishId = string.IsNullOrWhiteSpace(request.PublishId) ? Guid.NewGuid() : Guid.Parse(request.PublishId);
         var envelope = new Envelope(request.ExchangeName, request.RoutingKey, new InboundMessage(Guid.NewGuid(), correlationId, request.Payload.Memory, DateTimeOffset.UtcNow));
+        using var diagnosticsActivity = request.IncludeDiagnostics
+            ? new Activity("RocketMQ.PublishDiagnostics").Start()
+            : null;
+        diagnosticsActivity?.SetTag(PublishDiagnosticTags.Enabled, true);
+        var serverStarted = Stopwatch.GetTimestamp();
         try
         {
             var result = await _publisher.PublishAsync(publishId, envelope, context.CancellationToken);
@@ -31,6 +38,10 @@ public sealed class ProducerService : Producer.ProducerBase
                 Status = result.Status.ToString()
             };
             response.DestinationQueues.AddRange(result.DestinationQueues);
+            if (diagnosticsActivity is not null)
+            {
+                response.Diagnostics = CreateDiagnostics(diagnosticsActivity, Stopwatch.GetElapsedTime(serverStarted).TotalMilliseconds);
+            }
             return response;
         }
         catch (KeyNotFoundException ex)
@@ -42,6 +53,27 @@ public sealed class ProducerService : Producer.ProducerBase
             throw new RpcException(new Status(StatusCode.AlreadyExists, ex.Message));
         }
     }
+
+    private static PublishDiagnostics CreateDiagnostics(Activity activity, double serverTotalMilliseconds) => new()
+    {
+        ServerTotalMs = serverTotalMilliseconds,
+        WriterWaitMs = ReadMilliseconds(activity, PublishDiagnosticTags.WriterWaitMilliseconds),
+        ConnectionOpenMs = ReadMilliseconds(activity, PublishDiagnosticTags.ConnectionOpenMilliseconds),
+        TransactionBeginMs = ReadMilliseconds(activity, PublishDiagnosticTags.TransactionBeginMilliseconds),
+        TransactionWorkMs = ReadMilliseconds(activity, PublishDiagnosticTags.TransactionWorkMilliseconds),
+        TransactionCommitMs = ReadMilliseconds(activity, PublishDiagnosticTags.TransactionCommitMilliseconds),
+        CleanupMs = ReadMilliseconds(activity, PublishDiagnosticTags.CleanupMilliseconds),
+        FingerprintMs = ReadMilliseconds(activity, PublishDiagnosticTags.FingerprintMilliseconds),
+        IdempotencyLookupMs = ReadMilliseconds(activity, PublishDiagnosticTags.IdempotencyLookupMilliseconds),
+        ExchangeLookupMs = ReadMilliseconds(activity, PublishDiagnosticTags.ExchangeLookupMilliseconds),
+        RoutingMs = ReadMilliseconds(activity, PublishDiagnosticTags.RoutingMilliseconds),
+        PublicationInsertMs = ReadMilliseconds(activity, PublishDiagnosticTags.PublicationInsertMilliseconds),
+        EnqueueMs = ReadMilliseconds(activity, PublishDiagnosticTags.EnqueueMilliseconds),
+        ResultReadMs = ReadMilliseconds(activity, PublishDiagnosticTags.ResultReadMilliseconds)
+    };
+
+    private static double ReadMilliseconds(Activity activity, string tag)
+        => activity.GetTagItem(tag) is double value ? value : 0;
 
     private static RpcException InvalidArgument(string message) => new(new Status(StatusCode.InvalidArgument, message));
 }

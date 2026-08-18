@@ -15,6 +15,7 @@ public sealed record BenchmarkOptions(
     int PayloadBytes,
     RoutingMode Routing,
     int QueueCount,
+    bool DetailedTimings,
     string ResultsDirectory)
 {
     public static BenchmarkOptions Parse(string[] args)
@@ -33,6 +34,7 @@ public sealed record BenchmarkOptions(
         var payloadBytes = PositiveInt(values, "payload-bytes", 1024);
         var queueCount = PositiveInt(values, "queue-count", 1);
         var routing = ParseRouting(values.GetValueOrDefault("routing", "direct"));
+        var detailedTimings = ParseBool(values, "detailed-timings", false);
         var resultsDirectory = values.GetValueOrDefault("results-dir", Path.Combine("artifacts", "benchmarks"));
 
         if (duration <= TimeSpan.Zero)
@@ -55,7 +57,7 @@ public sealed record BenchmarkOptions(
             throw new ArgumentException("--queue-count must be 1 when --routing is direct.");
         }
 
-        return new BenchmarkOptions(endpoint, databasePath, duration, warmup, workers, payloadBytes, routing, queueCount, resultsDirectory);
+        return new BenchmarkOptions(endpoint, databasePath, duration, warmup, workers, payloadBytes, routing, queueCount, detailedTimings, resultsDirectory);
     }
 
     public static string Usage => """
@@ -68,6 +70,7 @@ public sealed record BenchmarkOptions(
           --payload-bytes <int>       Payload size (1..16777216); default 1024.
           --routing direct|fanout     Routing scenario; default direct.
           --queue-count <int>         Fanout destination count; default 1.
+          --detailed-timings <bool>   Include opt-in server timing breakdown; default false.
           --results-dir <path>        JSON report directory; default artifacts/benchmarks.
         """;
 
@@ -119,6 +122,13 @@ public sealed record BenchmarkOptions(
             ? int.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var parsed) && parsed > 0
                 ? parsed
                 : throw new ArgumentException($"--{key} must be a positive integer.")
+            : defaultValue;
+
+    private static bool ParseBool(IReadOnlyDictionary<string, string> values, string key, bool defaultValue)
+        => values.TryGetValue(key, out var value)
+            ? bool.TryParse(value, out var parsed)
+                ? parsed
+                : throw new ArgumentException($"--{key} must be true or false.")
             : defaultValue;
 
     private static RoutingMode ParseRouting(string value)

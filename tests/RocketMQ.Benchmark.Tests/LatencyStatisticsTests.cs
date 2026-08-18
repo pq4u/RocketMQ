@@ -14,10 +14,22 @@ public sealed class LatencyStatisticsTests
 
         Assert.Equal(100, statistics.Count);
         Assert.Equal(1, statistics.MinMilliseconds, 6);
+        Assert.Equal(50.5, statistics.MeanMilliseconds, 6);
         Assert.Equal(50, statistics.P50Milliseconds, 6);
         Assert.Equal(95, statistics.P95Milliseconds, 6);
         Assert.Equal(99, statistics.P99Milliseconds, 6);
         Assert.Equal(100, statistics.MaxMilliseconds, 6);
+    }
+
+    [Fact]
+    public void FromMilliseconds_CalculatesMeanAndNearestRankPercentiles()
+    {
+        var statistics = LatencyStatistics.FromMilliseconds([1, 2, 10, 20]);
+
+        Assert.Equal(4, statistics.Count);
+        Assert.Equal(8.25, statistics.MeanMilliseconds, 6);
+        Assert.Equal(2, statistics.P50Milliseconds, 6);
+        Assert.Equal(20, statistics.P95Milliseconds, 6);
     }
 }
 

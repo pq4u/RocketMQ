@@ -15,6 +15,7 @@ public sealed class BenchmarkOptionsTests
         Assert.Equal(1024, options.PayloadBytes);
         Assert.Equal(RoutingMode.Direct, options.Routing);
         Assert.Equal(1, options.QueueCount);
+        Assert.False(options.DetailedTimings);
     }
 
     [Fact]
@@ -39,5 +40,16 @@ public sealed class BenchmarkOptionsTests
 
         Assert.Equal(RoutingMode.Fanout, options.Routing);
         Assert.Equal(3, options.QueueCount);
+    }
+
+    [Fact]
+    public void Parse_AcceptsDetailedTimings()
+    {
+        var options = BenchmarkOptions.Parse([
+            "--endpoint", "http://localhost:50051",
+            "--database-path", "D:\\bench\\broker.db",
+            "--detailed-timings", "true"]);
+
+        Assert.True(options.DetailedTimings);
     }
 }

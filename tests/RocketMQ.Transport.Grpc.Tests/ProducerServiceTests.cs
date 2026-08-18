@@ -47,4 +47,23 @@ public sealed class ProducerServiceTests
         var exception = await Assert.ThrowsAsync<RpcException>(() => service.Publish(new PublishRequest { ExchangeName = "missing" }, _context));
         Assert.Equal(StatusCode.NotFound, exception.StatusCode);
     }
+
+    [Fact]
+    public async Task Publish_DiagnosticsRequested_ReturnsServerTimings()
+    {
+        var publishId = Guid.NewGuid();
+        _publisher.Setup(x => x.PublishAsync(publishId, It.IsAny<Envelope>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublishResult(publishId, Guid.NewGuid(), PublishStatus.Accepted, ["orders"]));
+        var service = new ProducerService(_publisher.Object);
+
+        var response = await service.Publish(new PublishRequest
+        {
+            ExchangeName = "orders",
+            PublishId = publishId.ToString(),
+            IncludeDiagnostics = true
+        }, _context);
+
+        Assert.NotNull(response.Diagnostics);
+        Assert.True(response.Diagnostics.ServerTotalMs >= 0);
+    }
 }
