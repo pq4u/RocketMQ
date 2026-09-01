@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Data.Sqlite;
 using RocketMQ.Core.Diagnostics;
 using RocketMQ.Core.Models;
 using RocketMQ.Persistence.Sqlite;
@@ -93,7 +94,71 @@ public sealed class SqlitePersistenceIntegrationTests : IAsyncLifetime
         Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.EnqueueMilliseconds));
     }
 
+    [Fact]
+    public async Task Initialization_UpgradesVersion1DatabaseWithPublicationRetentionIndex()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"rocketmq-v1-{Guid.NewGuid():N}.db");
+        var connectionString = $"Data Source={databasePath};Mode=ReadWriteCreate;Pooling=False";
+        try
+        {
+            await using (var connection = new SqliteConnection(connectionString))
+            {
+                await connection.OpenAsync(TestContext.Current.CancellationToken);
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    CREATE TABLE schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        applied_at_utc TEXT NOT NULL
+                    );
+                    CREATE TABLE publications (
+                        publish_id BLOB PRIMARY KEY,
+                        message_id BLOB NOT NULL,
+                        request_fingerprint TEXT NOT NULL,
+                        status INTEGER NOT NULL,
+                        created_at_utc TEXT NOT NULL
+                    );
+                    INSERT INTO schema_migrations(version, applied_at_utc)
+                    VALUES (1, '2026-01-01T00:00:00.0000000+00:00');
+                    """;
+                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+            }
+
+            var routing = new SqliteRoutingStore(new SqliteDatabase(connectionString));
+            await routing.GetExchangeAsync("missing", TestContext.Current.CancellationToken);
+
+            await using var verificationConnection = new SqliteConnection(connectionString);
+            await verificationConnection.OpenAsync(TestContext.Current.CancellationToken);
+            await using var verification = verificationConnection.CreateCommand();
+            verification.CommandText = """
+                SELECT
+                    EXISTS(SELECT 1 FROM schema_migrations WHERE version=2),
+                    EXISTS(SELECT 1 FROM sqlite_master
+                           WHERE type='index' AND name='ix_publications_created_at'
+                             AND tbl_name='publications');
+                """;
+            await using var reader = await verification.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+            Assert.True(await reader.ReadAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(1, reader.GetInt32(0));
+            Assert.Equal(1, reader.GetInt32(1));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            DeleteIfExists(databasePath);
+            DeleteIfExists(databasePath + "-wal");
+            DeleteIfExists(databasePath + "-shm");
+        }
+    }
+
     private static Envelope Envelope(string exchange, string routingKey) => new(exchange, routingKey, new InboundMessage(Guid.NewGuid(), Guid.NewGuid(), new byte[] { 1, 2, 3 }, DateTimeOffset.UtcNow));
+
+    private static void DeleteIfExists(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
 }
 
 

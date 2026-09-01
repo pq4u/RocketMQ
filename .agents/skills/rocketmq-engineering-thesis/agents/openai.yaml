@@ -1,0 +1,6 @@
+interface:
+  display_name: "Praca inżynierska RocketMQ"
+  short_description: "Twórz pracę inżynierską na podstawie projektu"
+  default_prompt: "Użyj $rocketmq-engineering-thesis, aby przygotować oparty na dowodach fragment pracy „Projekt i implementacja systemu kolejkowania wiadomości”."
+policy:
+  allow_implicit_invocation: true

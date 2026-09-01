@@ -167,6 +167,12 @@ public sealed class SqliteDatabase
                 await ExecuteNonQueryAsync(connection, transaction,
                     "INSERT OR IGNORE INTO schema_migrations(version, applied_at_utc) VALUES (1, $now);",
                     ct, ("$now", UtcNowText()));
+                await ApplyMigrationAsync(
+                    connection,
+                    transaction,
+                    version: 2,
+                    "CREATE INDEX IF NOT EXISTS ix_publications_created_at ON publications(created_at_utc);",
+                    ct);
                 transaction.Commit();
                 _initialized = true;
             }
@@ -185,6 +191,32 @@ public sealed class SqliteDatabase
     private static async Task ConfigureConnectionAsync(SqliteConnection connection, CancellationToken ct)
     {
         await ExecuteNonQueryAsync(connection, null, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;", ct);
+    }
+
+    private static async Task ApplyMigrationAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        int version,
+        string sql,
+        CancellationToken ct)
+    {
+        await using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText = "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$version);";
+        check.Parameters.AddWithValue("$version", version);
+        if (Convert.ToInt32(await check.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture) != 0)
+        {
+            return;
+        }
+
+        await ExecuteNonQueryAsync(connection, transaction, sql, ct);
+        await ExecuteNonQueryAsync(
+            connection,
+            transaction,
+            "INSERT INTO schema_migrations(version, applied_at_utc) VALUES ($version, $now);",
+            ct,
+            ("$version", version),
+            ("$now", UtcNowText()));
     }
 
     internal static async Task ExecuteNonQueryAsync(
