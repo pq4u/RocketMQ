@@ -6,7 +6,12 @@ Open.
 
 ## Current behavior
 
-The gRPC producer returns success after writing an `Envelope` to the bounded channel. Routing happens later in [`RoutingWorkerService`](../../src/Runner/RocketMQ.Runner/Program.cs), and routing errors are logged rather than returned to the producer. Therefore current `success=true` does not guarantee routing, queue acceptance, or durability.
+The gRPC producer calls `IMessagePublisher`. The SQLite publisher returns only
+after a transaction records the idempotency result and every routed queue copy.
+Unknown exchanges and publish-id conflicts are returned as gRPC errors;
+an exchange without a matching binding returns an explicit `Unroutable`
+response. The bounded channel is internal to the SQLite publisher and is used
+for batching, not as the confirmation boundary.
 
 ## Analysis
 
@@ -23,7 +28,7 @@ For the first implementation, route and persist synchronously through a broker s
 ## Implemented semantics
 
 - `Publish` confirms only after one SQLite transaction records its publish-idempotency entry and every routed queue copy.
-- Response returns broker `message_id`, `publish_id`, routing status, and destination queues. `Unroutable` is explicit and not persisted.
+- Response returns broker `message_id`, `publish_id`, routing status, and destination queues. `Unroutable` is explicit and its result is retained for idempotent retries.
 - A `publish_id` is retained for 24 hours. Repeating it with identical exchange, routing key, correlation ID, and payload returns the original outcome; different content returns `AlreadyExists`.
 - Unknown exchanges return gRPC `NotFound`.
 

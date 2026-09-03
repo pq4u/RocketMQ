@@ -47,6 +47,7 @@ public static class Program
         Console.WriteLine($"Latency ms: p50={report.Latency.P50Milliseconds:N2}, p95={report.Latency.P95Milliseconds:N2}, p99={report.Latency.P99Milliseconds:N2}, max={report.Latency.MaxMilliseconds:N2}");
         if (report.DetailedTimings is { } timings)
         {
+            Console.WriteLine($"Batch: mean-size={timings.BatchSize.Mean:N2}, p50-size={timings.BatchSize.P50:N0}, p95-size={timings.BatchSize.P95:N0}, assembly-mean={timings.BatchAssembly.MeanMilliseconds:N2} ms");
             Console.WriteLine($"Mean timing ms: server={timings.ServerTotal.MeanMilliseconds:N2}, writer-wait={timings.WriterWait.MeanMilliseconds:N2}, work={timings.TransactionWork.MeanMilliseconds:N2}, commit={timings.TransactionCommit.MeanMilliseconds:N2}, client/transport={timings.ClientAndTransport.MeanMilliseconds:N2}");
             Console.WriteLine($"Mean SQL work ms: cleanup={timings.Cleanup.MeanMilliseconds:N2}, fingerprint={timings.Fingerprint.MeanMilliseconds:N2}, idempotency={timings.IdempotencyLookup.MeanMilliseconds:N2}, exchange={timings.ExchangeLookup.MeanMilliseconds:N2}, routing={timings.Routing.MeanMilliseconds:N2}, publication={timings.PublicationInsert.MeanMilliseconds:N2}, enqueue={timings.Enqueue.MeanMilliseconds:N2}");
         }
@@ -228,6 +229,8 @@ public sealed class BenchmarkRunner
     {
         private long _count;
         private readonly ConcurrentBag<double> _serverTotal = [];
+        private readonly ConcurrentBag<double> _batchSize = [];
+        private readonly ConcurrentBag<double> _batchAssembly = [];
         private readonly ConcurrentBag<double> _writerWait = [];
         private readonly ConcurrentBag<double> _connectionOpen = [];
         private readonly ConcurrentBag<double> _transactionBegin = [];
@@ -247,6 +250,8 @@ public sealed class BenchmarkRunner
         {
             Interlocked.Increment(ref _count);
             _serverTotal.Add(timing.ServerTotalMs);
+            _batchSize.Add(timing.BatchSize);
+            _batchAssembly.Add(timing.BatchAssemblyMs);
             _writerWait.Add(timing.WriterWaitMs);
             _connectionOpen.Add(timing.ConnectionOpenMs);
             _transactionBegin.Add(timing.TransactionBeginMs);
@@ -269,6 +274,8 @@ public sealed class BenchmarkRunner
                 ? null
                 : new PublishTimingBreakdown(
                     LatencyStatistics.FromMilliseconds(_serverTotal),
+                    NumericStatistics.FromValues(_batchSize),
+                    LatencyStatistics.FromMilliseconds(_batchAssembly),
                     LatencyStatistics.FromMilliseconds(_writerWait),
                     LatencyStatistics.FromMilliseconds(_connectionOpen),
                     LatencyStatistics.FromMilliseconds(_transactionBegin),

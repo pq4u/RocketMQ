@@ -3,9 +3,16 @@
 **Status:** Proposed  
 **Date:** 2026-07-12  
 **Supersedes:** —  
-**Relates to:** [ADR-0001](file:///D:/RocketMQ/RocketMQ/docs/adr/0001-queue-over-log.md) (Queue over Log)
+**Relates to:** [ADR-0001](0001-queue-over-log.md) (Queue over Log)
 
 ---
+
+> **Implementation note (2026-09-02):** named queues, bindings and routing
+> types are implemented. The default exchange and automatic queue binding
+> described below are not implemented. The active publish path calls
+> <code>IMessagePublisher</code>; it does not send Envelope through a general
+> transport-to-router channel. Status remains Proposed because this note records
+> observed code and does not approve the unresolved product choices.
 
 ## Context
 

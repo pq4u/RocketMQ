@@ -69,11 +69,16 @@ public sealed class ProducerService : Producer.ProducerBase
         RoutingMs = ReadMilliseconds(activity, PublishDiagnosticTags.RoutingMilliseconds),
         PublicationInsertMs = ReadMilliseconds(activity, PublishDiagnosticTags.PublicationInsertMilliseconds),
         EnqueueMs = ReadMilliseconds(activity, PublishDiagnosticTags.EnqueueMilliseconds),
-        ResultReadMs = ReadMilliseconds(activity, PublishDiagnosticTags.ResultReadMilliseconds)
+        ResultReadMs = ReadMilliseconds(activity, PublishDiagnosticTags.ResultReadMilliseconds),
+        BatchSize = ReadInt32(activity, PublishDiagnosticTags.BatchSize),
+        BatchAssemblyMs = ReadMilliseconds(activity, PublishDiagnosticTags.BatchAssemblyMilliseconds)
     };
 
     private static double ReadMilliseconds(Activity activity, string tag)
         => activity.GetTagItem(tag) is double value ? value : 0;
+
+    private static int ReadInt32(Activity activity, string tag)
+        => activity.GetTagItem(tag) is int value ? value : 0;
 
     private static RpcException InvalidArgument(string message) => new(new Status(StatusCode.InvalidArgument, message));
 }

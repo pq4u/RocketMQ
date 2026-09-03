@@ -27,8 +27,15 @@ dotnet run --project tools/RocketMQ.Benchmark -- `
 Detailed timings report distributions for writer-gate wait, connection open,
 transaction begin/work/commit, publication cleanup, fingerprinting, idempotency
 lookup, exchange lookup, routing, publication insert, queue inserts, and the
-remaining client/transport time. Instrumentation is disabled by default so the
-standard baseline remains comparable with older runs.
+remaining client/transport time. They also report the effective publish batch
+size and time spent assembling a batch. Instrumentation is disabled by default
+so the standard baseline remains comparable with older runs.
+
+The broker groups durable publishes into a single SQLite transaction. By
+default it commits when either 32 publications have arrived or 1 ms has elapsed
+since the first publication in the batch. The limits can be overridden in the
+broker configuration with `RocketMQ:Persistence:PublishBatchSize` and
+`RocketMQ:Persistence:PublishBatchDelay`.
 
 For a fanout scenario:
 

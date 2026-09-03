@@ -27,6 +27,12 @@ public sealed class SqliteDatabase
     internal async Task<T> WriteAsync<T>(
         Func<SqliteConnection, SqliteTransaction, CancellationToken, Task<T>> action,
         CancellationToken ct)
+        => await WriteAsync(action, ct, timingSink: null);
+
+    internal async Task<T> WriteAsync<T>(
+        Func<SqliteConnection, SqliteTransaction, CancellationToken, Task<T>> action,
+        CancellationToken ct,
+        Action<SqliteWriteTiming>? timingSink)
     {
         await EnsureInitializedAsync(ct);
         var diagnostics = Activity.Current?.GetTagItem(PublishDiagnosticTags.Enabled) is true
@@ -34,25 +40,38 @@ public sealed class SqliteDatabase
             : null;
         var stageStarted = Stopwatch.GetTimestamp();
         await _writerGate.WaitAsync(ct);
+        var writerAcquiredAt = Stopwatch.GetTimestamp();
+        var writerWaitMilliseconds = ElapsedMilliseconds(stageStarted, writerAcquiredAt);
         SetElapsed(diagnostics, PublishDiagnosticTags.WriterWaitMilliseconds, stageStarted);
         try
         {
             stageStarted = Stopwatch.GetTimestamp();
             await using var connection = await OpenConnectionAsync(ct);
+            var connectionOpenMilliseconds = ElapsedMilliseconds(stageStarted);
             SetElapsed(diagnostics, PublishDiagnosticTags.ConnectionOpenMilliseconds, stageStarted);
 
             stageStarted = Stopwatch.GetTimestamp();
             using var transaction = connection.BeginTransaction(System.Data.IsolationLevel.Serializable);
+            var transactionBeginMilliseconds = ElapsedMilliseconds(stageStarted);
             SetElapsed(diagnostics, PublishDiagnosticTags.TransactionBeginMilliseconds, stageStarted);
             try
             {
                 stageStarted = Stopwatch.GetTimestamp();
                 var result = await action(connection, transaction, ct);
+                var transactionWorkMilliseconds = ElapsedMilliseconds(stageStarted);
                 SetElapsed(diagnostics, PublishDiagnosticTags.TransactionWorkMilliseconds, stageStarted);
 
                 stageStarted = Stopwatch.GetTimestamp();
                 transaction.Commit();
+                var transactionCommitMilliseconds = ElapsedMilliseconds(stageStarted);
                 SetElapsed(diagnostics, PublishDiagnosticTags.TransactionCommitMilliseconds, stageStarted);
+                timingSink?.Invoke(new SqliteWriteTiming(
+                    writerAcquiredAt,
+                    writerWaitMilliseconds,
+                    connectionOpenMilliseconds,
+                    transactionBeginMilliseconds,
+                    transactionWorkMilliseconds,
+                    transactionCommitMilliseconds));
                 return result;
             }
             catch
@@ -246,8 +265,22 @@ public sealed class SqliteDatabase
     {
         if (activity is not null)
         {
-            activity.SetTag(tag, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            activity.SetTag(tag, ElapsedMilliseconds(started));
         }
     }
+
+    private static double ElapsedMilliseconds(long started)
+        => Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+
+    private static double ElapsedMilliseconds(long started, long ended)
+        => Stopwatch.GetElapsedTime(started, ended).TotalMilliseconds;
 }
+
+internal sealed record SqliteWriteTiming(
+    long WriterAcquiredAt,
+    double WriterWaitMilliseconds,
+    double ConnectionOpenMilliseconds,
+    double TransactionBeginMilliseconds,
+    double TransactionWorkMilliseconds,
+    double TransactionCommitMilliseconds);
 

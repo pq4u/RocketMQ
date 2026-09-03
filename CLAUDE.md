@@ -15,8 +15,9 @@ in separate projects under `src/Persistence/` and `src/Transport/`.
 |------|---------|----------|
 | `IMessageQueueStore` | Queue persistence with lease/ack/nack | RabbitMQ-style competing consumers with visibility timeout (see ADR-0001). Operations target named queues (see ADR-0002). |
 | `IPersistenceStore` | Append-only durable log | Kafka-style offset-based replay (retained for future event-sourcing use) |
-| `IMessageChannel<T>` | Backpressure boundary (bounded channel) | Producer→consumer flow control, never drops messages. Channel carries `Envelope` (see ADR-0002). |
-| `ITransportServer` | Network transport (gRPC, TCP/Pipelines) | Accepts connections, pushes into IMessageChannel |
+| `IMessagePublisher` | Durable routed publication | Active gRPC publish path; completes after the SQLite transaction commits. |
+| `IMessageChannel<T>` | Legacy/general channel abstraction | Not used on the active Runner publish path. The production bounded channel is internal to `SqliteMessagePublisher`. |
+| `ITransportServer` | Network transport lifecycle | Starts and stops the gRPC host. Producer calls `IMessagePublisher` directly. |
 | `IRoutingStore` | Routing metadata persistence | Exchange/queue/binding CRUD with idempotent declares (see ADR-0002) |
 | `IMessageRouter` | Routing resolution logic | Resolves exchange+routingKey → list of target queue names (see ADR-0002) |
 
@@ -35,7 +36,7 @@ in separate projects under `src/Persistence/` and `src/Transport/`.
 - `QueueDefinition` — named queue metadata (`Name`, `Durable`, `MaxDeliveryCount`).
 - `Binding` — connects an exchange to a queue with a routing key.
 - `Envelope` — wraps `InboundMessage` with routing metadata (`ExchangeName`,
-  `RoutingKey`). Flows through `IMessageChannel<Envelope>`.
+  `RoutingKey`). It is passed to `IMessagePublisher` on the active path.
 
 ### Adapters
 
@@ -44,9 +45,14 @@ in separate projects under `src/Persistence/` and `src/Transport/`.
 | `SqlitePersistenceStore` | `IPersistenceStore` | `RocketMQ.Persistence.Sqlite` |
 | `SqliteMessageQueueStore` | `IMessageQueueStore` | `RocketMQ.Persistence.Sqlite` |
 | `SqliteRoutingStore` | `IRoutingStore` | `RocketMQ.Persistence.Sqlite` |
+| `SqliteMessagePublisher` | `IMessagePublisher` | `RocketMQ.Persistence.Sqlite` |
 | `CustomWalPersistenceStore` | `IPersistenceStore` | `RocketMQ.Persistence.Wal` |
 | `WalMessageQueueStore` | `IMessageQueueStore` | `RocketMQ.Persistence.Wal` |
 | `WalRoutingStore` | `IRoutingStore` | `RocketMQ.Persistence.Wal` |
+
+The Runner registers the SQLite adapters. In-memory implementations are test
+fixtures. All custom-WAL methods remain experimental stubs and must not be
+registered in the Runner.
 
 ## Testing Strategy
 
@@ -75,8 +81,9 @@ NetArchTest-based tests that enforce dependency rules:
 ### Channels
 
 System.Threading.Channels usage: capacity and `FullMode` must ALWAYS be
-explicit — never `Channel.CreateUnbounded` on the network→disk production
-path.
+explicit — never `Channel.CreateUnbounded` on a network-to-disk production
+path. The current bounded channel is owned by `SqliteMessagePublisher`, has
+capacity 1024, uses `FullMode.Wait`, multiple writers, and one reader.
 
 ### Persistence Skeletons
 

@@ -39,6 +39,8 @@ message PublishDiagnostics {
   double publication_insert_ms = 12;
   double enqueue_ms = 13;
   double result_read_ms = 14;
+  int32 batch_size = 15;
+  double batch_assembly_ms = 16;
 }
 
 service Consumer {

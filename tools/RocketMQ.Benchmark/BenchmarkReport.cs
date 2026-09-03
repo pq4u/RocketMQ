@@ -37,6 +37,33 @@ public sealed record LatencyStatistics(long Count, double MinMilliseconds, doubl
     private static double ToMilliseconds(long ticks) => ticks * 1000d / Stopwatch.Frequency;
 }
 
+public sealed record NumericStatistics(long Count, double Min, double Mean, double P50, double P95, double P99, double Max)
+{
+    public static NumericStatistics FromValues(IReadOnlyCollection<double> values)
+    {
+        if (values.Count == 0)
+        {
+            return new NumericStatistics(0, 0, 0, 0, 0, 0, 0);
+        }
+
+        var sorted = values.Order().ToArray();
+        return new NumericStatistics(
+            sorted.Length,
+            sorted[0],
+            sorted.Average(),
+            Percentile(sorted, 0.50),
+            Percentile(sorted, 0.95),
+            Percentile(sorted, 0.99),
+            sorted[^1]);
+    }
+
+    private static double Percentile(IReadOnlyList<double> values, double percentile)
+    {
+        var index = (int)Math.Ceiling(percentile * values.Count) - 1;
+        return values[Math.Clamp(index, 0, values.Count - 1)];
+    }
+}
+
 public sealed record BenchmarkReport(
     string RunId,
     DateTimeOffset StartedAtUtc,
@@ -68,6 +95,8 @@ public sealed record BenchmarkCounts(long Attempts, long Accepted, long Unroutab
 
 public sealed record PublishTimingBreakdown(
     LatencyStatistics ServerTotal,
+    NumericStatistics BatchSize,
+    LatencyStatistics BatchAssembly,
     LatencyStatistics WriterWait,
     LatencyStatistics ConnectionOpen,
     LatencyStatistics TransactionBegin,

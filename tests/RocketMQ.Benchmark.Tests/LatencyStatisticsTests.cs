@@ -22,6 +22,17 @@ public sealed class LatencyStatisticsTests
     }
 
     [Fact]
+    public void NumericStatistics_UsesUnitlessFieldNamesAndNearestRankPercentiles()
+    {
+        var statistics = NumericStatistics.FromValues([1, 2, 10, 20]);
+
+        Assert.Equal(4, statistics.Count);
+        Assert.Equal(8.25, statistics.Mean, 6);
+        Assert.Equal(2, statistics.P50);
+        Assert.Equal(20, statistics.P95);
+    }
+
+    [Fact]
     public void FromMilliseconds_CalculatesMeanAndNearestRankPercentiles()
     {
         var statistics = LatencyStatistics.FromMilliseconds([1, 2, 10, 20]);

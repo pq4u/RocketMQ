@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "docs-writing": {
+      "source": "mblode/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/docs-writing/SKILL.md",
+      "computedHash": "a0c5f06faa3db5ee1f50222701d6fd2f8186bd83d75f6d88c350026d2f37229f"
+    }
+  }
+}

@@ -6,6 +6,13 @@ Date: 2026-07-12
 
 Proposed
 
+> **Implementation note (2026-09-02):** RocketMQ.Client, DI registration,
+> Producer, Consumer and Admin facades exist. Producer retries
+> RESOURCE_EXHAUSTED with exponential delays, but without jitter; the current
+> server path does not emit that status for a full publisher buffer. Consumer
+> uses unary polling and has no lease renewal. The canonical current API is
+> documented in [SDK .NET](../reference/dotnet-sdk.md).
+
 ## Context
 
 Zaimplementowaliśmy bazową architekturę kolejkowania (ADR-0001), rutingu (ADR-0002) oraz warstwę sieciową opartą na gRPC (ADR-0003). Protokoły gRPC (protobuf) definiują ścisły kontrakt, jednak bezpośrednie korzystanie z wygenerowanych klas klienckich gRPC wymagałoby od programistów pisania powtarzalnego kodu (tzw. boilerplate) do obsługi m.in.:

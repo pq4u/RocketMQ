@@ -4,6 +4,8 @@ namespace RocketMQ.Core.Diagnostics;
 public static class PublishDiagnosticTags
 {
     public const string Enabled = "rocketmq.publish.diagnostics.enabled";
+    public const string BatchSize = "rocketmq.publish.batch_size";
+    public const string BatchAssemblyMilliseconds = "rocketmq.publish.batch_assembly_ms";
     public const string WriterWaitMilliseconds = "rocketmq.publish.writer_wait_ms";
     public const string ConnectionOpenMilliseconds = "rocketmq.publish.connection_open_ms";
     public const string TransactionBeginMilliseconds = "rocketmq.publish.transaction_begin_ms";

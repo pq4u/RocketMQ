@@ -31,11 +31,24 @@ public static class Program
                 Directory.CreateDirectory(directory);
 
                 var connectionString = $"Data Source={databasePath};Mode=ReadWriteCreate;Cache=Shared";
+                var publishBatchSize = ReadPositiveInt(
+                    context.Configuration["RocketMQ:Persistence:PublishBatchSize"],
+                    SqliteMessagePublisher.DefaultMaxBatchSize,
+                    "RocketMQ:Persistence:PublishBatchSize");
+                var publishBatchDelay = ReadNonNegativeTimeSpan(
+                    context.Configuration["RocketMQ:Persistence:PublishBatchDelay"],
+                    SqliteMessagePublisher.DefaultMaxBatchDelay,
+                    "RocketMQ:Persistence:PublishBatchDelay");
                 services.AddSingleton(new SqliteDatabase(connectionString));
                 services.AddSingleton<IMessageQueueStore, SqliteMessageQueueStore>();
                 services.AddSingleton<IRoutingStore, SqliteRoutingStore>();
                 services.AddSingleton<IPersistenceStore, SqlitePersistenceStore>();
-                services.AddSingleton<IMessagePublisher, SqliteMessagePublisher>();
+                services.AddSingleton(serviceProvider => new SqliteMessagePublisher(
+                    serviceProvider.GetRequiredService<SqliteDatabase>(),
+                    publishBatchSize,
+                    publishBatchDelay));
+                services.AddSingleton<IMessagePublisher>(
+                    serviceProvider => serviceProvider.GetRequiredService<SqliteMessagePublisher>());
                 services.AddSingleton<ITransportServer, GrpcTransportServer>();
                 services.AddSingleton<SqliteMaintenanceService>();
                 services.AddHostedService<ServerHostedService>();
@@ -44,6 +57,37 @@ public static class Program
             .Build();
 
         await host.RunAsync();
+    }
+
+    private static int ReadPositiveInt(string? configuredValue, int defaultValue, string key)
+    {
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return defaultValue;
+        }
+
+        if (int.TryParse(configuredValue, out var value) && value > 0)
+        {
+            return value;
+        }
+
+        throw new InvalidOperationException($"Configure {key} with a positive integer.");
+    }
+
+    private static TimeSpan ReadNonNegativeTimeSpan(string? configuredValue, TimeSpan defaultValue, string key)
+    {
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return defaultValue;
+        }
+
+        if (TimeSpan.TryParse(configuredValue, System.Globalization.CultureInfo.InvariantCulture, out var value)
+            && value >= TimeSpan.Zero)
+        {
+            return value;
+        }
+
+        throw new InvalidOperationException($"Configure {key} with a non-negative time span.");
     }
 }
 

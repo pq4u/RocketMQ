@@ -26,3 +26,6 @@ jobs:
       run: dotnet build RocketMQ.slnx --no-restore
     - name: Test
       run: dotnet test RocketMQ.slnx --no-build --verbosity normal
+    - name: Verify documentation
+      shell: pwsh
+      run: ./tools/verify-docs.ps1

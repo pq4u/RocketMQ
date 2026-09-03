@@ -6,7 +6,11 @@ Open.
 
 ## Current baseline
 
-The runner is a single .NET process using in-memory stores. The agreed first persistence backend is SQLite, which naturally supports a single authoritative broker node. There is no clustering, replication, leader election, or deployment packaging yet.
+The runner is a single .NET process using a local SQLite database configured by
+an absolute path. It listens on port 50051 over HTTP/2 without TLS. There is no
+clustering, replication, leader election, health endpoint or deployment
+packaging. In-memory stores are fixtures used by tests, not the active Runner
+configuration.
 
 ## Analysis
 

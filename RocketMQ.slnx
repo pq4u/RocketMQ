@@ -2,6 +2,9 @@
   <Folder Name="/.claude/">
     <File Path=".claude/settings.json" />
   </Folder>
+  <Folder Name="/examples/">
+    <Project Path="examples/RocketMQ.Example/RocketMQ.Example.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Client/">
     <Project Path="src/Client/RocketMQ.Client/RocketMQ.Client.csproj" />

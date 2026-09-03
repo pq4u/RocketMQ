@@ -6,7 +6,17 @@ Confirmed implementation decision: SQLite is the only durable backend for the fi
 
 ## Current baseline
 
-The runner currently registers in-memory queue and routing stores. The SQLite and custom WAL projects exist, but their implementations are incomplete and contain `NotImplementedException` paths, for example [`SqliteMessageQueueStore.cs`](../../src/Persistence/RocketMQ.Persistence.Sqlite/SqliteMessageQueueStore.cs) and [`WalMessageQueueStore.cs`](../../src/Persistence/RocketMQ.Persistence.Wal/WalMessageQueueStore.cs).
+The runner currently registers the SQLite database, routing store, queue store,
+persistence store and batched message publisher. SQLite migrations, routing,
+leasing, acknowledgements, dead letters and idempotent publication are
+implemented and covered by tests. The custom WAL project remains experimental
+and contains `NotImplementedException` paths, for example
+[`WalMessageQueueStore.cs`](../../src/Persistence/RocketMQ.Persistence.Wal/WalMessageQueueStore.cs).
+
+The current implementation differs from some details specified below:
+dead-letter retention is a fixed 30 days rather than configurable and cleanup
+failures are not logged. Automatic MaxDeliveryCount handling is implemented.
+These are documented gaps, not implicit changes to this confirmed decision.
 
 ## Decisions
 

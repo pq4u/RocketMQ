@@ -17,7 +17,10 @@ The core interfaces already model leasing, acknowledgement, negative acknowledge
 
 At-least-once delivery means a message may be delivered more than once after a crash, lost connection, expired lease, or uncertain acknowledgement result. FIFO must be defined carefully: strict FIFO is easy with one active consumer but conflicts with parallel consumers and slow messages. A queue can preserve enqueue order while allowing later messages to be leased only if the product accepts parallel processing.
 
-The current model has no lease renewal, and `QueueDefinition.MaxDeliveryCount` is not enforced by the in-memory store. Ack and nack operations also need clear behavior when the lease has expired.
+The current SDK has no lease renewal. Both the SQLite implementation used by
+Runner and the in-memory fixture reject Ack and Nack for an inactive or expired
+lease. Both stores enforce `QueueDefinition.MaxDeliveryCount`; zero means
+unlimited, and the gRPC Admin service declares queues with a limit of 10.
 
 ## Recommended default
 

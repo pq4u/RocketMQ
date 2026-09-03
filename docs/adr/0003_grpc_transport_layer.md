@@ -6,6 +6,12 @@ Date: 2026-07-12
 
 Proposed
 
+> **Implementation note (2026-09-02):** the three unary gRPC services and the
+> protobuf contract are implemented. Runner listens on port 50051 over cleartext
+> HTTP/2. ProducerService calls the durable IMessagePublisher directly. A full
+> internal buffer is not currently mapped to RESOURCE_EXHAUSTED, so the
+> backpressure behavior proposed below is not the current wire behavior.
+
 ## Context
 
 With the core domain, queue semantics (ADR-0001), and routing architecture (ADR-0002) designed, we need a way for external applications (Producers and Consumers) to interact with the RocketMQ broker over a network. 

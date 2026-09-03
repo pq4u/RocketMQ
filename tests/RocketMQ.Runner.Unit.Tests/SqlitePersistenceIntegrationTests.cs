@@ -24,9 +24,13 @@ public sealed class SqlitePersistenceIntegrationTests : IAsyncLifetime
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        return ValueTask.CompletedTask;
+        await _publisher.DisposeAsync();
+        SqliteConnection.ClearAllPools();
+        DeleteIfExists(_databasePath);
+        DeleteIfExists(_databasePath + "-wal");
+        DeleteIfExists(_databasePath + "-shm");
     }
 
     [Fact]
@@ -92,6 +96,48 @@ public sealed class SqlitePersistenceIntegrationTests : IAsyncLifetime
         Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.TransactionCommitMilliseconds));
         Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.CleanupMilliseconds));
         Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.EnqueueMilliseconds));
+        Assert.Equal(1, Assert.IsType<int>(activity.GetTagItem(PublishDiagnosticTags.BatchSize)));
+        Assert.IsType<double>(activity.GetTagItem(PublishDiagnosticTags.BatchAssemblyMilliseconds));
+    }
+
+    [Fact]
+    public async Task Publish_CommitsImmediatelyWhenBatchReachesMaximumSize()
+    {
+        await _routing.DeclareExchangeAsync(new Exchange("full-batch", ExchangeType.Direct, true), CancellationToken.None);
+        await _routing.DeclareQueueAsync(new QueueDefinition("full-batch", true, 3), CancellationToken.None);
+        await _routing.BindAsync(new Binding("full-batch", "full-batch", "key"), CancellationToken.None);
+        await using var publisher = new SqliteMessagePublisher(
+            _database,
+            maxBatchSize: 4,
+            maxBatchDelay: TimeSpan.FromSeconds(30),
+            queueCapacity: 4);
+
+        var publishes = Enumerable.Range(0, 4)
+            .Select(_ => PublishWithDiagnosticsAsync(publisher, Envelope("full-batch", "key")))
+            .ToArray();
+        var completed = await Task.WhenAll(publishes).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.All(completed, item => Assert.Equal(4, Assert.IsType<int>(
+            item.Diagnostics.GetTagItem(PublishDiagnosticTags.BatchSize))));
+    }
+
+    [Fact]
+    public async Task Publish_CommitsPartialBatchAfterMaximumDelay()
+    {
+        await _routing.DeclareExchangeAsync(new Exchange("partial-batch", ExchangeType.Direct, true), CancellationToken.None);
+        await _routing.DeclareQueueAsync(new QueueDefinition("partial-batch", true, 3), CancellationToken.None);
+        await _routing.BindAsync(new Binding("partial-batch", "partial-batch", "key"), CancellationToken.None);
+        await using var publisher = new SqliteMessagePublisher(
+            _database,
+            maxBatchSize: 4,
+            maxBatchDelay: TimeSpan.FromMilliseconds(20),
+            queueCapacity: 4);
+
+        var completed = await PublishWithDiagnosticsAsync(publisher, Envelope("partial-batch", "key"))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(PublishStatus.Accepted, completed.Result.Status);
+        Assert.Equal(1, Assert.IsType<int>(completed.Diagnostics.GetTagItem(PublishDiagnosticTags.BatchSize)));
     }
 
     [Fact]
@@ -151,6 +197,23 @@ public sealed class SqlitePersistenceIntegrationTests : IAsyncLifetime
     }
 
     private static Envelope Envelope(string exchange, string routingKey) => new(exchange, routingKey, new InboundMessage(Guid.NewGuid(), Guid.NewGuid(), new byte[] { 1, 2, 3 }, DateTimeOffset.UtcNow));
+
+    private static async Task<(PublishResult Result, Activity Diagnostics)> PublishWithDiagnosticsAsync(
+        SqliteMessagePublisher publisher,
+        Envelope envelope)
+    {
+        var activity = new Activity("publish-batch-diagnostics").Start();
+        activity.SetTag(PublishDiagnosticTags.Enabled, true);
+        try
+        {
+            var result = await publisher.PublishAsync(Guid.NewGuid(), envelope, CancellationToken.None);
+            return (result, activity);
+        }
+        finally
+        {
+            activity.Stop();
+        }
+    }
 
     private static void DeleteIfExists(string path)
     {
