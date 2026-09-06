@@ -61,7 +61,7 @@ public sealed record BenchmarkOptions(
     }
 
     public static string Usage => """
-        Usage: dotnet run --project tools/RocketMQ.Benchmark -- --endpoint http://localhost:50051 --database-path D:\RocketMQData\rocketmq.db [options]
+        Usage: dotnet run --project tools/RocketMQ.Benchmark -- --endpoint https://localhost:50051 --database-path D:\RocketMQData\rocketmq.db [options]
 
         Options:
           --duration <TimeSpan>       Measurement duration; default 00:15:00.

@@ -3,19 +3,18 @@
 ## Ograniczenia bieżące
 
 - pojedynczy proces i jeden lokalny plik SQLite;
-- brak TLS, uwierzytelniania i autoryzacji;
+- brak uwierzytelniania i autoryzacji mimo szyfrowania TLS;
 - brak replikacji, HA i recovery między węzłami;
 - unary polling zamiast streamingu;
 - brak automatycznego odnawiania lease;
 - brak publicznego browse i replay dead letters;
-- niespójny domyślny endpoint SDK i Runnera;
 - brak konfigurowalnej retencji i logowania błędów maintenance;
 - adapter WAL składa się z jawnych stubów;
 - otwarte ostrzeżenie bezpieczeństwa zależności SQLite.
 
 ## Priorytety rozwoju
 
-Najpierw warto usunąć ryzyka bezpieczeństwa i dokumentacyjne: zaktualizować podatną zależność, ujednolicić endpoint, dodać TLS/auth oraz obserwowalność. Następnie można rozszerzyć operacje administracyjne i cykl lease. Klaster albo własny WAL wymaga osobnej decyzji architektonicznej i testów awaryjnych; nie powinien być dopisywany jako drobny adapter.
+TLS i domyślny endpoint są ujednolicone. Następne ryzyka bezpieczeństwa to podatna zależność, brak uwierzytelniania, autoryzacji, limitów per klient i audytu; potrzebna jest również obserwowalność. Następnie można rozszerzyć operacje administracyjne i cykl lease. Klaster albo własny WAL wymaga osobnej decyzji architektonicznej i testów awaryjnych; nie powinien być dopisywany jako drobny adapter.
 
 ## Otwarte decyzje
 
@@ -24,4 +23,3 @@ Dokumenty w [docs/decisions](../decisions/) zachowują pytania o domyślne zacho
 ## Wniosek
 
 Projekt demonstruje spójny rdzeń brokera: trwałą publikację, routing i lease z at-least-once. Największą wartością jest jawny kontrakt zachowania oraz oddzielenie portów od adapterów. Najważniejszą granicą jest natomiast brak cech operacyjnych wymaganych w publicznej usłudze.
-

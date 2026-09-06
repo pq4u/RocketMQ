@@ -7,7 +7,8 @@ Open.
 ## Current baseline
 
 The runner is a single .NET process using a local SQLite database configured by
-an absolute path. It listens on port 50051 over HTTP/2 without TLS. There is no
+an absolute path. It defaults to `https://localhost:50051` over HTTP/2 and reads
+its endpoint and server certificate from standard Kestrel configuration. There is no
 clustering, replication, leader election, health endpoint or deployment
 packaging. In-memory stores are fixtures used by tests, not the active Runner
 configuration.
@@ -16,7 +17,7 @@ configuration.
 
 Single-node operation reduces complexity and is the right match for SQLite. It does not provide failover: a process or host failure interrupts service, and a single database file becomes the scaling boundary. Introducing clustering before the delivery and persistence contracts are stable would make correctness harder to validate.
 
-The project still needs an explicit deployment contract: configuration source, storage path, port binding, logging, health checks, backup procedure, and upgrade/migration behavior. The current server hard-codes port 50051 and has no TLS configuration.
+The project still needs an explicit deployment contract for packaging, logging, health checks, backup procedure, and upgrade/migration behavior. Storage, endpoint binding and TLS certificate sources are configurable; production deployments must provide their own certificate.
 
 ## Recommended default
 

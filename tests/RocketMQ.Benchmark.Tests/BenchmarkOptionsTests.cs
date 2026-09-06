@@ -7,7 +7,7 @@ public sealed class BenchmarkOptionsTests
     [Fact]
     public void Parse_UsesDefaultsForDirectScenario()
     {
-        var options = BenchmarkOptions.Parse(["--endpoint", "http://localhost:50051", "--database-path", "D:\\bench\\broker.db"]);
+        var options = BenchmarkOptions.Parse(["--endpoint", "https://localhost:50051", "--database-path", "D:\\bench\\broker.db"]);
 
         Assert.Equal(TimeSpan.FromMinutes(15), options.Duration);
         Assert.Equal(TimeSpan.FromSeconds(30), options.Warmup);
@@ -22,7 +22,7 @@ public sealed class BenchmarkOptionsTests
     public void Parse_RejectsDirectScenarioWithMultipleQueues()
     {
         var exception = Assert.Throws<ArgumentException>(() => BenchmarkOptions.Parse([
-            "--endpoint", "http://localhost:50051",
+            "--endpoint", "https://localhost:50051",
             "--database-path", "D:\\bench\\broker.db",
             "--queue-count", "2"]));
 
@@ -33,7 +33,7 @@ public sealed class BenchmarkOptionsTests
     public void Parse_AcceptsFanoutScenario()
     {
         var options = BenchmarkOptions.Parse([
-            "--endpoint", "http://localhost:50051",
+            "--endpoint", "https://localhost:50051",
             "--database-path", "D:\\bench\\broker.db",
             "--routing", "fanout",
             "--queue-count", "3"]);
@@ -46,7 +46,7 @@ public sealed class BenchmarkOptionsTests
     public void Parse_AcceptsDetailedTimings()
     {
         var options = BenchmarkOptions.Parse([
-            "--endpoint", "http://localhost:50051",
+            "--endpoint", "https://localhost:50051",
             "--database-path", "D:\\bench\\broker.db",
             "--detailed-timings", "true"]);
 

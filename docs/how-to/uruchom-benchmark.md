@@ -18,7 +18,7 @@ Nie usuwaj ani nie kopiuj aktywnej bazy w trakcie pomiaru.
 W drugim terminalu ustaw tę samą zmienną <code>$databasePath</code> i wykonaj:
 
 ~~~powershell
-dotnet run --project tools/RocketMQ.Benchmark -- --endpoint http://localhost:50051 --database-path $databasePath
+dotnet run --project tools/RocketMQ.Benchmark -- --endpoint https://localhost:50051 --database-path $databasePath
 ~~~
 
 Domyślny scenariusz używa 32 workerów, payloadu 1 KiB, 30 sekund rozgrzewki i 15 minut pomiaru. Raport JSON trafia do <code>artifacts/benchmarks</code>.
@@ -28,7 +28,7 @@ Domyślny scenariusz używa 32 workerów, payloadu 1 KiB, 30 sekund rozgrzewki i
 Jeżeli broker i benchmark pochodzą z tego samego buildu, dodaj:
 
 ~~~powershell
-dotnet run --project tools/RocketMQ.Benchmark -- --endpoint http://localhost:50051 --database-path $databasePath --detailed-timings true
+dotnet run --project tools/RocketMQ.Benchmark -- --endpoint https://localhost:50051 --database-path $databasePath --detailed-timings true
 ~~~
 
 Diagnostyka zmienia ilość wykonywanej pracy. Porównuj ze sobą wyłącznie uruchomienia z tym samym ustawieniem.

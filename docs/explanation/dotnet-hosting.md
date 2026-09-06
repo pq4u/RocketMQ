@@ -14,7 +14,7 @@ Obiekty są singletonami, ponieważ współdzielą jedną bazę i kontrolę zapi
 
 ## Composition root
 
-<code>Program.cs</code> jest jedynym miejscem, które powinno znać konkretną konfigurację procesu: SQLite, port 50051, implementacje portów i hosted services. Dzięki temu Core pozostaje niezależny od hosta.
+<code>Program.cs</code> jest composition rootem dla SQLite, implementacji portów i hosted services. <code>GrpcTransportServer</code> pobiera z głównego hosta standardową sekcję Kestrela, która określa endpoint HTTP/2 i certyfikat TLS. Domyślny adres to <code>https://localhost:50051</code>. Dzięki temu Core pozostaje niezależny od hosta i szczegółów TLS.
 
 ## BackgroundService i PeriodicTimer
 
@@ -25,4 +25,3 @@ Wyjątek nie powinien przypadkowo zatrzymać całego procesu; jednocześnie bł�
 ## Cykl życia
 
 Host tworzy singletony przy pierwszym użyciu i zwalnia je podczas zamknięcia. Ma to znaczenie dla <code>IAsyncDisposable</code> publishera: kontrolowane zatrzymanie kończy kanał i czeka na worker. Nagłe przerwanie procesu nadal może utracić elementy, które nie dotarły do commit.
-

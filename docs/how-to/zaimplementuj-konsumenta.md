@@ -12,11 +12,11 @@ using RocketMQ.Client;
 
 services.AddRocketMQClient(options =>
 {
-    options.Endpoint = "http://localhost:50051";
+    options.Endpoint = "https://localhost:50051";
 });
 ~~~
 
-Adres musi wskazywać działający endpoint gRPC. Bieżący domyślny adres SDK nie odpowiada endpointowi runnera, dlatego ustaw go jawnie.
+Adres musi wskazywać działający endpoint gRPC. Jest to również bieżąca wartość domyślna SDK. Certyfikat serwera musi być zaufany przez system klienta.
 
 ## Uruchom konsumenta
 

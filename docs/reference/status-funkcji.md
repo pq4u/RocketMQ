@@ -1,6 +1,6 @@
 # Status funkcji
 
-Stan zweryfikowany względem bieżącego drzewa roboczego 2 września 2026.
+Stan zweryfikowany względem bieżącego drzewa roboczego 6 września 2026.
 
 | Obszar | Status | Uwagi |
 |---|---|---|
@@ -10,11 +10,12 @@ Stan zweryfikowany względem bieżącego drzewa roboczego 2 września 2026.
 | PublishId | działa i jest testowane | okno 24 godziny |
 | lease, Ack, Nack, redelivery | działa i jest testowane | unary polling |
 | dead-letter zapis i port Core | działa | brak publicznego API browse |
-| SDK .NET | działa | domyślny endpoint jest niespójny z Runnerem |
+| SDK .NET | działa | domyślnie https://localhost:50051 |
 | benchmark gRPC | działa | direct i fanout |
 | SQLite WAL mode | działa | jeden writer, lokalny plik |
 | własny adapter WAL | niezaimplementowany | metody zgłaszają NotImplementedException |
-| TLS i auth | brak | tylko środowisko lokalne |
+| TLS | działa i jest testowany | domyślny endpoint HTTPS; HTTP tylko na loopback |
+| uwierzytelnianie i autoryzacja | brak | każdy osiągalny klient ma pełny dostęp do RPC |
 | HA, replikacja, klaster | brak | pojedynczy proces |
 | streaming konsumenta | brak | SDK odpytuje LeaseNext |
 | automatyczne odnowienie lease | brak | dobierz visibility timeout |

@@ -5,11 +5,11 @@ Rejestracja:
 ~~~csharp
 services.AddRocketMQClient(options =>
 {
-    options.Endpoint = "http://localhost:50051";
+    options.Endpoint = "https://localhost:50051";
 });
 ~~~
 
-Jawne podanie endpointu jest zalecane. Domyślna wartość w bieżącym SDK to <code>https://localhost:5001</code> i nie odpowiada lokalnemu Runnerowi.
+Domyślna wartość SDK to <code>https://localhost:50051</code> i odpowiada lokalnemu Runnerowi. Dla innego wdrożenia podaj endpoint jawnie. SDK używa standardowej walidacji certyfikatu systemu operacyjnego i nie wyłącza sprawdzania nazwy hosta ani łańcucha zaufania.
 
 ## IProducer
 

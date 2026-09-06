@@ -8,7 +8,7 @@ Start a broker with a dedicated, fresh SQLite database, then run. The database f
 
 ```powershell
 dotnet run --project tools/RocketMQ.Benchmark -- `
-  --endpoint http://localhost:50051 `
+  --endpoint https://localhost:50051 `
   --database-path D:\RocketMQData\rocketmq.db
 ```
 
@@ -19,7 +19,7 @@ the broker and benchmark from the same build and add:
 
 ```powershell
 dotnet run --project tools/RocketMQ.Benchmark -- `
-  --endpoint http://localhost:50051 `
+  --endpoint https://localhost:50051 `
   --database-path D:\RocketMQData\rocketmq.db `
   --detailed-timings true
 ```
@@ -41,11 +41,13 @@ For a fanout scenario:
 
 ```powershell
 dotnet run --project tools/RocketMQ.Benchmark -- `
-  --endpoint http://localhost:50051 `
+  --endpoint https://localhost:50051 `
   --database-path D:\RocketMQData\rocketmq.db `
   --routing fanout `
   --queue-count 3
 ```
 
 Run each comparison on a fresh database. Perform three identical direct runs before evaluating the SQLite/WAL decision. The report captures database, WAL, and SHM file sizes plus free disk space; collect broker CPU and memory separately with a system profiler.
+
+The HTTPS certificate must be trusted by the operating system running the benchmark.
 

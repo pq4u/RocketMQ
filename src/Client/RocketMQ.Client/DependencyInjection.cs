@@ -6,7 +6,7 @@ namespace RocketMQ.Client;
 
 public class RocketMQClientOptions
 {
-    public string Endpoint { get; set; } = "https://localhost:5001";
+    public string Endpoint { get; set; } = "https://localhost:50051";
 }
 
 public static class RocketMQClientExtensions

@@ -9,7 +9,10 @@ Zainstaluj .NET 10 SDK. W katalogu głównym repozytorium wykonaj:
 ~~~powershell
 dotnet restore
 dotnet build --no-restore
+dotnet dev-certs https --trust
 ~~~
+
+Ostatnie polecenie tworzy lub zatwierdza lokalny certyfikat deweloperski używany przez domyślny endpoint HTTPS.
 
 ## Uruchom proces
 
@@ -24,9 +27,17 @@ dotnet run --project src/Runner/RocketMQ.Runner --no-build -- --RocketMQ:Persist
 
 ## Sprawdź uruchomienie
 
-Proces powinien pozostać aktywny i nasłuchiwać na porcie <code>50051</code>. Serwer używa HTTP/2 bez TLS i wiąże port do wszystkich interfejsów.
+Proces powinien pozostać aktywny i nasłuchiwać pod adresem <code>https://localhost:50051</code>. Serwer używa HTTP/2 z TLS i domyślnie wiąże port tylko do loopback.
 
-> **Ostrzeżenie:** uruchamiaj ten wariant wyłącznie w zaufanym środowisku lokalnym. Broker nie uwierzytelnia klientów.
+> **Ostrzeżenie:** TLS chroni transmisję, ale broker nadal nie uwierzytelnia ani nie autoryzuje klientów.
+
+Jawny tryb nieszyfrowany jest dostępny wyłącznie na loopback:
+
+~~~powershell
+dotnet run --project src/Runner/RocketMQ.Runner --no-build -- --RocketMQ:Persistence:DatabasePath=$databasePath --Kestrel:Endpoints:Grpc:Url=http://localhost:50051
+~~~
+
+Runner odrzuci konfigurację HTTP wskazującą adres inny niż loopback. Wystawienie brokera w sieci wymaga endpointu HTTPS i produkcyjnego certyfikatu opisanego w [referencji konfiguracji](../reference/konfiguracja.md).
 
 ## Zatrzymaj proces
 

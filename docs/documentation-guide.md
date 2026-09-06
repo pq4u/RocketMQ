@@ -119,5 +119,4 @@ dotnet test --no-build --verbosity normal
 
 ## Dalszy plan
 
-Struktura bazowa jest wdrożona. Następne iteracje powinny dodawać dokumentację operacyjną razem z implementacją TLS/auth, health checks, backup/restore i telemetryki. Po uzyskaniu porównywalnych artefaktów benchmarku należy uzupełnić rozdział wydajności rzeczywistymi wynikami, bez zastępowania pomiaru estymacją.
-
+Struktura bazowa i TLS serwera są wdrożone. Następne iteracje powinny dodawać dokumentację operacyjną razem z uwierzytelnianiem, autoryzacją, health checks, backup/restore i telemetryką. Po uzyskaniu porównywalnych artefaktów benchmarku należy uzupełnić rozdział wydajności rzeczywistymi wynikami, bez zastępowania pomiaru estymacją.

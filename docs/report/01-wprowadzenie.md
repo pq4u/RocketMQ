@@ -11,6 +11,7 @@ Celem RocketMQ jest zaprojektowanie i zaimplementowanie niewielkiego brokera, kt
 - konkurujących konsumentów z lease i visibility timeout;
 - semantykę co najmniej raz, Ack, Nack i dead-letter;
 - idempotencję publikacji;
+- szyfrowanie transportu gRPC przez TLS;
 - rozdzielenie domeny od gRPC i SQLite.
 
 ## Pytania techniczne
@@ -23,5 +24,4 @@ Ocena nie opiera się wyłącznie na uruchomieniu dema. Kryteriami są kontrakty
 
 ## Poza zakresem
 
-Prototyp nie realizuje klastra, replikacji, TLS, uwierzytelniania, autoryzacji ani dokładnie jednokrotnego przetwarzania. Nie ukończono również własnego adaptera WAL.
-
+Prototyp nie realizuje klastra, replikacji, uwierzytelniania, autoryzacji ani dokładnie jednokrotnego przetwarzania. TLS chroni połączenie z serwerem, lecz nie wprowadza tożsamości klienta. Nie ukończono również własnego adaptera WAL.

@@ -14,7 +14,7 @@ Wszystkie bieżące RPC są unary: jedno żądanie i jedna odpowiedź. Konsument
 flowchart LR
     APP[Aplikacja] --> SDK[SDK .NET]
     SDK --> STUB[Wygenerowany klient]
-    STUB -->|HTTP/2| SERVICE[Usługa gRPC]
+    STUB -->|HTTP/2 + TLS| SERVICE[Usługa gRPC]
     SERVICE --> CORE[Port Core]
 ~~~
 
@@ -26,5 +26,4 @@ Błędy walidacji i domenowe są mapowane na kody gRPC. Przykładowo brak exchan
 
 ## Bezpieczeństwo
 
-Bieżący Runner nasłuchuje na <code>http://localhost:50051</code> po HTTP/2 bez TLS i uwierzytelniania. Jest to konfiguracja lokalna. Wystawienie portu poza zaufane środowisko wymaga zaprojektowania TLS, tożsamości klienta, autoryzacji i limitów zasobów.
-
+Bieżący Runner domyślnie nasłuchuje na <code>https://localhost:50051</code> po HTTP/2 z TLS. Certyfikat serwera zabezpiecza poufność transmisji i pozwala klientowi zweryfikować serwer, ale nie identyfikuje klienta. Broker nadal nie ma uwierzytelniania, autoryzacji ani limitów per klient. Jawny tryb HTTP jest dozwolony wyłącznie na loopback.

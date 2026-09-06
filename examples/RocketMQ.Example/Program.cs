@@ -7,7 +7,7 @@ var services = new ServiceCollection();
 services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
 services.AddRocketMQClient(options =>
 {
-    options.Endpoint = "http://localhost:50051";
+    options.Endpoint = "https://localhost:50051";
 });
 
 await using var serviceProvider = services.BuildServiceProvider();
@@ -46,4 +46,3 @@ var result = await producer.PublishAsync(
 Console.WriteLine("Publikacja: " + result.Status + ", kolejki: " + result.DestinationQueues.Count);
 Console.WriteLine("Odebrano: " + await received.Task.WaitAsync(timeout.Token));
 Console.WriteLine("Komunikat został potwierdzony.");
-

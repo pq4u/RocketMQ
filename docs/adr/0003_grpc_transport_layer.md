@@ -6,9 +6,10 @@ Date: 2026-07-12
 
 Proposed
 
-> **Implementation note (2026-09-02):** the three unary gRPC services and the
-> protobuf contract are implemented. Runner listens on port 50051 over cleartext
-> HTTP/2. ProducerService calls the durable IMessagePublisher directly. A full
+> **Implementation note (2026-09-06):** the three unary gRPC services and the
+> protobuf contract are implemented. Runner defaults to HTTPS on localhost:50051
+> with HTTP/2 and a Kestrel-managed server certificate; explicit cleartext mode
+> is restricted to loopback. ProducerService calls the durable IMessagePublisher directly. A full
 > internal buffer is not currently mapped to RESOURCE_EXHAUSTED, so the
 > backpressure behavior proposed below is not the current wire behavior.
 

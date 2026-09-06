@@ -6,7 +6,7 @@ Open; required before exposing the broker outside a trusted local network.
 
 ## Current baseline
 
-The gRPC server listens on HTTP/2 without TLS via `ListenAnyIP(50051)`. There is no authentication, authorization, tenant boundary, quota enforcement, or audit trail. Any reachable client can publish, consume, and modify topology.
+The gRPC server defaults to HTTP/2 with TLS at `https://localhost:50051`. Kestrel loads the server certificate from its standard configuration or the local development certificate. Explicit cleartext HTTP is accepted only on loopback. There is still no client authentication, authorization, tenant boundary, quota enforcement, or audit trail. Any client that can reach and trust the endpoint can publish, consume, and modify topology.
 
 ## Analysis
 
@@ -18,7 +18,7 @@ Security choices affect protobuf metadata, deployment, client SDK configuration,
 
 For a first networked release:
 
-- require TLS outside local development;
+- keep TLS enabled outside local development;
 - authenticate clients with an implementation that fits the target environment, such as JWT/OIDC or mTLS;
 - authorize publish, consume, and topology operations separately;
 - add per-client connection, payload, publish-rate, and queue-consumer limits;

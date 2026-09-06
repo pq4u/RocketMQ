@@ -3,7 +3,7 @@
 Wymagane są działający broker oraz istniejąca lokalna baza SQLite utworzona przez ten broker.
 
 ~~~powershell
-dotnet run --project tools/RocketMQ.Benchmark -- --endpoint http://localhost:50051 --database-path D:\RocketMQData\rocketmq.db
+dotnet run --project tools/RocketMQ.Benchmark -- --endpoint https://localhost:50051 --database-path D:\RocketMQData\rocketmq.db
 ~~~
 
 | Opcja | Domyślnie | Reguła |
@@ -21,3 +21,4 @@ dotnet run --project tools/RocketMQ.Benchmark -- --endpoint http://localhost:500
 
 Narzędzie tworzy unikalną topologię, nie konsumuje wiadomości i nie ponawia błędnego RPC. Raport zawiera liczniki, throughput, p50/p95/p99/max, błędy, środowisko oraz rozmiary plików db, WAL i SHM. Detailed timings wymagają zgodnych buildów klienta i serwera.
 
+Dla HTTPS certyfikat brokera musi być zaufany przez system uruchamiający benchmark.

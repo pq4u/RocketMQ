@@ -2,7 +2,7 @@
 
 RocketMQ to edukacyjny broker wiadomości napisany w C# dla .NET 10. Obsługuje nazwane kolejki, routing przez wymiany, konkurujących konsumentów oraz jawne potwierdzanie przetworzenia przez gRPC.
 
-> **Status:** aktywny prototyp jednowęzłowy. Runner zapisuje dane w SQLite. Nie udostępnia TLS, uwierzytelniania, klastrowania ani interfejsu administracyjnego HTTP. Projekt nie jest Apache RocketMQ i nie implementuje protokołu AMQP.
+> **Status:** aktywny prototyp jednowęzłowy. Runner zapisuje dane w SQLite i domyślnie zabezpiecza gRPC przez TLS, ale nie uwierzytelnia ani nie autoryzuje klientów. Nie udostępnia klastrowania ani interfejsu administracyjnego HTTP. Projekt nie jest Apache RocketMQ i nie implementuje protokołu AMQP.
 
 ## Szybki start
 
@@ -11,11 +11,12 @@ Potrzebujesz zestawu .NET 10 SDK. W katalogu głównym repozytorium wykonaj:
 ~~~powershell
 dotnet restore
 dotnet build --no-restore
+dotnet dev-certs https --trust
 $databasePath = Join-Path (Get-Location) ".data\rocketmq.db"
 dotnet run --project src/Runner/RocketMQ.Runner -- --RocketMQ:Persistence:DatabasePath=$databasePath
 ~~~
 
-Broker nasłuchuje pod adresem <code>http://localhost:50051</code> przez HTTP/2 bez TLS. Zatrzymaj proces skrótem <code>Ctrl+C</code>.
+Broker nasłuchuje pod adresem <code>https://localhost:50051</code> przez HTTP/2 z TLS. Zatrzymaj proces skrótem <code>Ctrl+C</code>.
 
 W drugim terminalu uruchom kompletny przykład klienta:
 

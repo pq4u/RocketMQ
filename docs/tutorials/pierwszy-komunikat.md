@@ -13,11 +13,12 @@ W pierwszym terminalu przywróć pakiety, zbuduj rozwiązanie i uruchom runner z
 ~~~powershell
 dotnet restore
 dotnet build --no-restore
+dotnet dev-certs https --trust
 $databasePath = Join-Path (Get-Location) ".data\rocketmq.db"
 dotnet run --project src/Runner/RocketMQ.Runner --no-build -- --RocketMQ:Persistence:DatabasePath=$databasePath
 ~~~
 
-Runner tworzy katalog bazy, konfiguruje SQLite w trybie WAL i uruchamia gRPC pod adresem <code>http://localhost:50051</code>.
+Runner tworzy katalog bazy, konfiguruje SQLite w trybie WAL i uruchamia gRPC z TLS pod adresem <code>https://localhost:50051</code>.
 
 ## 2. Uruchom klienta
 
