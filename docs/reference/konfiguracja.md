@@ -15,6 +15,9 @@ Konfigurację dostarcza standardowy Generic Host: pliki appsettings, zmienne śr
 | <code>RocketMQ:Security:MutualTls:Enabled</code> | nie | <code>false</code> | po włączeniu wszystkie endpointy muszą być HTTPS i wymagają certyfikatu klienta |
 | <code>RocketMQ:Security:MutualTls:TrustedClientCaPath</code> | gdy mTLS włączone | brak | bezwzględna ścieżka do CA klientów w PEM lub DER; PEM może zawierać intermediates |
 | <code>RocketMQ:Security:MutualTls:RevocationMode</code> | nie | <code>NoCheck</code> | <code>NoCheck</code>, <code>Offline</code> albo <code>Online</code> |
+| <code>RocketMQ:Security:Authorization:Enabled</code> | nie | <code>false</code> | wymaga włączonego mTLS |
+| <code>RocketMQ:Security:Authorization:Clients:{ClientId}:CertificateSha256Fingerprints</code> | gdy autoryzacja włączona | brak | co najmniej jeden unikalny SHA-256; dozwolone są dwukropki |
+| <code>RocketMQ:Security:Authorization:Clients:{ClientId}:Permissions</code> | gdy autoryzacja włączona | brak | co najmniej jedno z: <code>Publish</code>, <code>Consume</code>, <code>Admin</code> |
 
 Runner używa standardowego schematu konfiguracji Kestrela. Lokalny wariant korzysta z certyfikatu utworzonego przez <code>dotnet dev-certs https --trust</code>. Kestrel obsługuje również certyfikat domyślny oraz certyfikat wskazany przez magazyn systemowy.
 
@@ -36,5 +39,7 @@ dotnet run --project src/Runner/RocketMQ.Runner -- --RocketMQ:Persistence:Databa
 Nie istnieje automatyczny fallback z HTTPS na HTTP. Brakujący albo niepoprawny certyfikat zatrzymuje start. Jawny lokalny tryb nieszyfrowany wymaga ustawienia URL na <code>http://localhost:50051</code>; konfiguracja HTTP dla <code>AnyIP</code> jest odrzucana.
 
 Po włączeniu mTLS tryb HTTP jest odrzucany również na loopback, a jawne ustawienie <code>ClientCertificateMode</code> inne niż <code>RequireCertificate</code> jest błędem. Broker ufa certyfikatom klienta wyłącznie z łańcucha prowadzącego do <code>TrustedClientCaPath</code>; systemowy magazyn zaufania nie rozszerza tej listy. Zmiana pliku CA wymaga restartu. Kompletny przykład znajduje się w instrukcji [Skonfiguruj wzajemne TLS](../how-to/skonfiguruj-mtls.md).
+
+Gdy autoryzacja jest włączona, fingerprint może należeć tylko do jednego <code>ClientId</code>, a uprawnienia są niezależne. Nieznany certyfikat zwraca <code>Unauthenticated</code>; brak roli dla wywoływanej usługi zwraca <code>PermissionDenied</code>. Konfiguracja jest ładowana przy starcie. Obecne uprawnienia są globalne dla grupy operacji i nie ograniczają jeszcze nazw exchange ani kolejek.
 
 Kanał publishera ma stałą pojemność 1024. Retencja PublishId wynosi 24 godziny, retencja dead letters 30 dni, a maintenance działa co godzinę. Te wartości nie są obecnie konfigurowalne.

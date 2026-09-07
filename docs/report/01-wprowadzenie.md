@@ -13,6 +13,7 @@ Celem RocketMQ jest zaprojektowanie i zaimplementowanie niewielkiego brokera, kt
 - idempotencję publikacji;
 - szyfrowanie transportu gRPC przez TLS;
 - opcjonalne uwierzytelnianie klientów przez mTLS;
+- opcjonalną autoryzację grup operacji Publish, Consume i Admin;
 - rozdzielenie domeny od gRPC i SQLite.
 
 ## Pytania techniczne
@@ -25,4 +26,4 @@ Ocena nie opiera się wyłącznie na uruchomieniu dema. Kryteriami są kontrakty
 
 ## Poza zakresem
 
-Prototyp nie realizuje klastra, replikacji, autoryzacji ani dokładnie jednokrotnego przetwarzania. Domyślny TLS nie identyfikuje klienta, natomiast opcjonalne mTLS dopuszcza tylko certyfikaty prowadzące do skonfigurowanego prywatnego CA. Nie mapuje ich jeszcze na role ani uprawnienia. Nie ukończono również własnego adaptera WAL.
+Prototyp nie realizuje klastra, replikacji, ACL per exchange/kolejka ani dokładnie jednokrotnego przetwarzania. Domyślny TLS nie identyfikuje klienta, natomiast opcjonalne mTLS dopuszcza tylko certyfikaty prowadzące do skonfigurowanego prywatnego CA. Dodatkowa allowlista może mapować fingerprint certyfikatu na klienta i role Publish, Consume oraz Admin. Nie ukończono również własnego adaptera WAL.

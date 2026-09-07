@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially implemented; authorization, limits, audit, and production rollout remain open.
+Partially implemented; resource ACLs, limits, durable audit, and production rollout remain open.
 
 ## Current baseline
 
@@ -10,7 +10,7 @@ The gRPC server defaults to HTTP/2 with TLS at `https://localhost:50051`. Kestre
 
 Mutual TLS is implemented as an opt-in transport setting. When enabled, every endpoint must use HTTPS and Kestrel requires a client certificate whose chain terminates at the configured private CA. The .NET SDK, example, and benchmark can load PFX/P12 or PEM client credentials. Certificate chains are checked when a connection is established and the HTTP/2 connection is reused. CA and client certificate rotation requires a process restart.
 
-There is still no authorization, tenant boundary, quota enforcement, or audit trail. Any client with a certificate accepted by the configured CA can publish, consume, and modify topology.
+Optional operation authorization maps one or more certificate SHA-256 fingerprints to a stable client ID and independent Publish, Consume, and Admin permissions. Unknown fingerprints are unauthenticated; known clients without a required permission are denied. Denials are logged without payloads. Permissions are global within an operation group, so there is still no exchange, queue, or tenant boundary, quota enforcement, or durable audit trail.
 
 ## Analysis
 
@@ -32,7 +32,7 @@ For local development, allow explicit insecure mode bound to loopback rather tha
 
 ## Questions
 
-1. Is the implemented mTLS identity sufficient for the target deployments, or are JWT/OIDC, API keys, or a pluggable provider also required?
+1. Is the implemented mTLS identity sufficient for all target deployments, or are JWT/OIDC, API keys, or a pluggable provider also required?
 2. Do you need users, service accounts, or both?
 3. Should permissions be scoped by operation, exchange, queue, tenant, or namespace?
 4. Is multi-tenancy required in the first release?

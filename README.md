@@ -2,7 +2,7 @@
 
 RocketMQ to edukacyjny broker wiadomości napisany w C# dla .NET 10. Obsługuje nazwane kolejki, routing przez wymiany, konkurujących konsumentów oraz jawne potwierdzanie przetworzenia przez gRPC.
 
-> **Status:** aktywny prototyp jednowęzłowy. Runner zapisuje dane w SQLite i domyślnie zabezpiecza gRPC przez TLS. Opcjonalne mTLS uwierzytelnia certyfikat klienta, ale broker nadal nie autoryzuje operacji. Nie udostępnia klastrowania ani interfejsu administracyjnego HTTP. Projekt nie jest Apache RocketMQ i nie implementuje protokołu AMQP.
+> **Status:** aktywny prototyp jednowęzłowy. Runner zapisuje dane w SQLite i domyślnie zabezpiecza gRPC przez TLS. Opcjonalne mTLS uwierzytelnia certyfikat klienta, a opcjonalna allowlista rozdziela uprawnienia Publish, Consume i Admin. Nie ma jeszcze ACL per exchange/kolejka, klastrowania ani interfejsu administracyjnego HTTP. Projekt nie jest Apache RocketMQ i nie implementuje protokołu AMQP.
 
 ## Szybki start
 

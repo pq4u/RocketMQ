@@ -26,4 +26,4 @@ Narzędzie tworzy unikalną topologię, nie konsumuje wiadomości i nie ponawia 
 
 Dla HTTPS certyfikat brokera musi być zaufany przez system uruchamiający benchmark.
 
-Benchmark ładuje certyfikat klienta raz i używa jednego kanału HTTP/2. Przykład pełnego polecenia znajduje się w instrukcji [Skonfiguruj wzajemne TLS](../how-to/skonfiguruj-mtls.md).
+Benchmark ładuje certyfikat klienta raz i używa jednego kanału HTTP/2. Przy włączonej autoryzacji certyfikat musi mieć role <code>Admin</code> i <code>Publish</code>, ponieważ narzędzie tworzy topologię przed pomiarem publikacji. Przykład pełnego polecenia znajduje się w instrukcji [Skonfiguruj wzajemne TLS](../how-to/skonfiguruj-mtls.md).

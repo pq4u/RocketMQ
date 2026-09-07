@@ -29,7 +29,7 @@ dotnet run --project src/Runner/RocketMQ.Runner --no-build -- --RocketMQ:Persist
 
 Proces powinien pozostać aktywny i nasłuchiwać pod adresem <code>https://localhost:50051</code>. Serwer używa HTTP/2 z TLS i domyślnie wiąże port tylko do loopback.
 
-> **Ostrzeżenie:** domyślny TLS chroni transmisję, ale nie uwierzytelnia klienta. Opcjonalne mTLS dodaje uwierzytelnienie certyfikatu, natomiast autoryzacja operacji nadal nie jest dostępna.
+> **Ostrzeżenie:** domyślny TLS chroni transmisję, ale nie uwierzytelnia klienta. Opcjonalne mTLS dodaje uwierzytelnienie certyfikatu, a osobno włączana allowlista rozdziela role Publish, Consume i Admin. ACL per exchange/kolejka nie są jeszcze dostępne.
 
 Jawny tryb nieszyfrowany jest dostępny wyłącznie na loopback:
 
@@ -39,7 +39,7 @@ dotnet run --project src/Runner/RocketMQ.Runner --no-build -- --RocketMQ:Persist
 
 Runner odrzuci konfigurację HTTP wskazującą adres inny niż loopback. Wystawienie brokera w sieci wymaga endpointu HTTPS i produkcyjnego certyfikatu opisanego w [referencji konfiguracji](../reference/konfiguracja.md).
 
-Aby wymagać certyfikatów klientów, wykonaj instrukcję [Skonfiguruj wzajemne TLS](skonfiguruj-mtls.md). Po włączeniu mTLS nawet lokalny endpoint HTTP jest zabroniony.
+Aby wymagać certyfikatów klientów i opcjonalnie ograniczyć grupy operacji, wykonaj instrukcję [Skonfiguruj wzajemne TLS](skonfiguruj-mtls.md). Po włączeniu mTLS nawet lokalny endpoint HTTP jest zabroniony.
 
 ## Zatrzymaj proces
 

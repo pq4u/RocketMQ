@@ -101,3 +101,6 @@ Architecture Decision Records live in `docs/adr/`.
   Exchanges, Bindings, Named Queues (AMQP-style)
 - [ADR-0003](docs/adr/0003_grpc_transport_layer.md) — gRPC Transport Layer 
   and API Contract
+- [ADR-0004](docs/adr/0004_client_sdk_architecture.md) — .NET client SDK
+- [ADR-0005](docs/adr/0005_certificate_operation_authorization.md) —
+  certificate identity and operation-level authorization

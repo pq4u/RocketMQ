@@ -35,7 +35,7 @@ Diagnostyka zmienia ilość wykonywanej pracy. Porównuj ze sobą wyłącznie ur
 
 ## Zmierz wariant mTLS
 
-Jeśli broker wymaga certyfikatu klienta, dodaj opcje <code>--client-certificate-path</code> i <code>--client-certificate-password-env</code>. Raport zapisze <code>MutualTls=true</code>. Porównując TLS z mTLS, zachowaj tę samą topologię, liczbę workerów i czas rozgrzewki; koszt weryfikacji certyfikatu występuje przy tworzeniu połączenia, a nie przy każdym Publish. Przygotowanie certyfikatów opisuje instrukcja [Skonfiguruj wzajemne TLS](skonfiguruj-mtls.md).
+Jeśli broker wymaga certyfikatu klienta, dodaj opcje <code>--client-certificate-path</code> i <code>--client-certificate-password-env</code>. Raport zapisze <code>MutualTls=true</code>. Przy włączonej autoryzacji certyfikat benchmarku wymaga ról <code>Admin</code> i <code>Publish</code>. Porównując TLS z mTLS, zachowaj tę samą topologię, liczbę workerów i czas rozgrzewki; koszt walidacji łańcucha występuje przy tworzeniu połączenia, a mapowanie fingerprintu i sprawdzenie roli przy RPC. Przygotowanie certyfikatów opisuje instrukcja [Skonfiguruj wzajemne TLS](skonfiguruj-mtls.md).
 
 ## Porównaj wyniki
 

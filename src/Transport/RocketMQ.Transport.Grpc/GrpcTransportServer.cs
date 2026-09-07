@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
@@ -37,9 +40,19 @@ public sealed class GrpcTransportServer : ITransportServer
     {
         var transportConfiguration = CreateTransportConfiguration(_configuration);
         var mutualTlsEnabled = IsMutualTlsEnabled(transportConfiguration);
+        var authorizationEnabled = ClientAuthorizationRegistry.IsEnabled(transportConfiguration);
+        if (authorizationEnabled && !mutualTlsEnabled)
+        {
+            throw new InvalidOperationException(
+                "RocketMQ:Security:Authorization:Enabled requires RocketMQ:Security:MutualTls:Enabled=true.");
+        }
+
         ValidateEndpointConfiguration(transportConfiguration, mutualTlsEnabled);
         _clientCertificateValidator = mutualTlsEnabled
             ? ClientCertificateValidator.Load(transportConfiguration)
+            : null;
+        var clientAuthorizationRegistry = authorizationEnabled
+            ? ClientAuthorizationRegistry.Load(transportConfiguration)
             : null;
 
         try
@@ -64,13 +77,55 @@ public sealed class GrpcTransportServer : ITransportServer
                 options.Configure(transportConfiguration.GetSection("Kestrel"));
             });
             builder.Services.AddGrpc();
+            if (clientAuthorizationRegistry is not null)
+            {
+                builder.Services.AddSingleton(clientAuthorizationRegistry);
+                builder.Services
+                    .AddAuthentication(BrokerAuthenticationDefaults.Scheme)
+                    .AddScheme<AuthenticationSchemeOptions, ClientCertificateAuthenticationHandler>(
+                        BrokerAuthenticationDefaults.Scheme,
+                        _ => { });
+                builder.Services.AddAuthorization(options =>
+                {
+                    AddPermissionPolicy(
+                        options,
+                        BrokerAuthorizationPolicies.Publish,
+                        BrokerPermission.Publish);
+                    AddPermissionPolicy(
+                        options,
+                        BrokerAuthorizationPolicies.Consume,
+                        BrokerPermission.Consume);
+                    AddPermissionPolicy(
+                        options,
+                        BrokerAuthorizationPolicies.Admin,
+                        BrokerPermission.Admin);
+                });
+                builder.Services.AddSingleton<IAuthorizationHandler, BrokerPermissionAuthorizationHandler>();
+                builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, BrokerAuthorizationResultHandler>();
+            }
+
             builder.Services.AddSingleton(_publisher);
             builder.Services.AddSingleton(_queueStore);
             builder.Services.AddSingleton(_routingStore);
             _app = builder.Build();
-            _app.MapGrpcService<ProducerService>();
-            _app.MapGrpcService<ConsumerService>();
-            _app.MapGrpcService<AdminService>();
+            if (clientAuthorizationRegistry is not null)
+            {
+                _app.UseAuthentication();
+                _app.UseAuthorization();
+                _app.MapGrpcService<ProducerService>()
+                    .RequireAuthorization(BrokerAuthorizationPolicies.Publish);
+                _app.MapGrpcService<ConsumerService>()
+                    .RequireAuthorization(BrokerAuthorizationPolicies.Consume);
+                _app.MapGrpcService<AdminService>()
+                    .RequireAuthorization(BrokerAuthorizationPolicies.Admin);
+            }
+            else
+            {
+                _app.MapGrpcService<ProducerService>();
+                _app.MapGrpcService<ConsumerService>();
+                _app.MapGrpcService<AdminService>();
+            }
+
             await _app.StartAsync(cancellationToken);
         }
         catch
@@ -120,7 +175,8 @@ public sealed class GrpcTransportServer : ITransportServer
                 ["Kestrel:Endpoints:Grpc:Url"] = "https://localhost:50051",
                 ["Kestrel:Endpoints:Grpc:Protocols"] = "Http2",
                 ["RocketMQ:Security:MutualTls:Enabled"] = "false",
-                ["RocketMQ:Security:MutualTls:RevocationMode"] = "NoCheck"
+                ["RocketMQ:Security:MutualTls:RevocationMode"] = "NoCheck",
+                ["RocketMQ:Security:Authorization:Enabled"] = "false"
             })
             .AddConfiguration(configuration)
             .Build();
@@ -185,6 +241,21 @@ public sealed class GrpcTransportServer : ITransportServer
         }
 
         return enabled;
+    }
+
+    private static void AddPermissionPolicy(
+        AuthorizationOptions options,
+        string policyName,
+        BrokerPermission permission)
+    {
+        options.AddPolicy(
+            policyName,
+            policy =>
+            {
+                policy.AddAuthenticationSchemes(BrokerAuthenticationDefaults.Scheme);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new BrokerPermissionRequirement(permission));
+            });
     }
 
     private async Task DisposeAppAsync()

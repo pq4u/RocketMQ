@@ -28,6 +28,8 @@ Dla PEM/CRT ustaw również <code>ClientCertificateKeyPath</code>. Certyfikat mu
 
 SDK nadal waliduje certyfikat serwera przy użyciu systemowego magazynu zaufania. Konfiguracja certyfikatu klienta nie wyłącza sprawdzania serwera.
 
+Jeżeli broker ma włączoną autoryzację, fingerprint tego certyfikatu musi być przypisany do <code>ClientId</code>. <code>IProducer</code> wymaga roli <code>Publish</code>, <code>IConsumer</code> roli <code>Consume</code>, a <code>IAdminClient</code> roli <code>Admin</code>. SDK nie przesyła dodatkowych tokenów ani metadanych autoryzacyjnych.
+
 ## IProducer
 
 <code>PublishAsync(exchangeName, routingKey, payload, correlationId, publishId, ct)</code> zwraca <code>PublishResult</code>: PublishId, MessageId, Status, DestinationQueues i właściwość Accepted.

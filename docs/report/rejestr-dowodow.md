@@ -21,6 +21,7 @@ Rejestr łączy twierdzenia raportu z artefaktem możliwym do sprawdzenia. Ście
 | EVID-015 | Benchmark zapisuje raport środowiska i percentyle | [narzędzie benchmarkowe](../../tools/RocketMQ.Benchmark/) |
 | EVID-016 | Runner domyślnie używa TLS, negocjuje HTTP/2 i blokuje HTTP poza loopback | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
 | EVID-017 | Opcjonalne mTLS wymaga certyfikatu klienta z prywatnego CA i odrzuca brak certyfikatu, obce CA, wygaśnięcie oraz zły EKU | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
+| EVID-018 | Opcjonalna autoryzacja mapuje fingerprint certyfikatu na klienta i niezależnie chroni Producer, Consumer oraz Admin | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
 
 ## Źródła zewnętrzne
 

@@ -20,4 +20,8 @@
       <ProjectReference Include="..\..\Core\RocketMQ.Core\RocketMQ.Core.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <InternalsVisibleTo Include="RocketMQ.Transport.Grpc.Tests" />
+    </ItemGroup>
+
 </Project>

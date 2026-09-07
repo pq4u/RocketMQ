@@ -1,6 +1,6 @@
 # Status funkcji
 
-Stan zweryfikowany względem bieżącego drzewa roboczego 6 września 2026.
+Stan zweryfikowany względem bieżącego drzewa roboczego 7 września 2026.
 
 | Obszar | Status | Uwagi |
 |---|---|---|
@@ -16,7 +16,7 @@ Stan zweryfikowany względem bieżącego drzewa roboczego 6 września 2026.
 | własny adapter WAL | niezaimplementowany | metody zgłaszają NotImplementedException |
 | TLS | działa i jest testowany | domyślny endpoint HTTPS; HTTP tylko na loopback |
 | mTLS | działa i jest testowane, opt-in | prywatne CA z PEM/DER; walidacja przy handshake; restart przy rotacji |
-| autoryzacja | brak | każdy klient z ważnym certyfikatem ma pełny dostęp do RPC |
+| autoryzacja | działa i jest testowana, opt-in | fingerprint SHA-256 → ClientId; niezależne Publish, Consume i Admin; brak ACL zasobowych |
 | HA, replikacja, klaster | brak | pojedynczy proces |
 | streaming konsumenta | brak | SDK odpytuje LeaseNext |
 | automatyczne odnowienie lease | brak | dobierz visibility timeout |

@@ -13,6 +13,8 @@ Proposed
 > uses unary polling and has no lease renewal. The SDK can attach a PFX/P12 or
 > PEM client certificate to all generated gRPC clients for optional mTLS; it
 > loads the certificate during DI registration and requires restart-based rotation.
+> The server may authorize that certificate for Publish, Consume, and Admin
+> independently; the SDK does not add a second credential or change its public API.
 > The canonical current API is
 > documented in [SDK .NET](../reference/dotnet-sdk.md).
 

@@ -1,3 +1,6 @@
+using Google.Protobuf;
+using Grpc.Core;
+using Grpc.Net.Client;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -8,6 +11,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Moq;
 using RocketMQ.Core.Abstractions;
+using RocketMQ.Core.Models;
+using RocketMQ.Transport.Grpc.Protos;
 
 namespace RocketMQ.Transport.Grpc.Tests;
 
@@ -269,15 +274,90 @@ public sealed class GrpcTransportServerTests
         Assert.NotNull(exception);
     }
 
-    private static GrpcTransportServer CreateServer(IConfiguration configuration)
+    [Fact]
+    public async Task StartAsync_WithAuthorizationWithoutMutualTls_RejectsConfiguration()
+    {
+        var configuration = CreateConfiguration($"https://127.0.0.1:{GetAvailablePort()}");
+        configuration["RocketMQ:Security:Authorization:Enabled"] = "true";
+        var server = CreateServer(configuration);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => server.StartAsync(CancellationToken.None));
+
+        Assert.Contains("requires RocketMQ:Security:MutualTls:Enabled=true", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("Publish", "Publish")]
+    [InlineData("Consume", "LeaseNext")]
+    [InlineData("Consume", "Ack")]
+    [InlineData("Consume", "Nack")]
+    [InlineData("Admin", "DeclareExchange")]
+    [InlineData("Admin", "DeclareQueue")]
+    [InlineData("Admin", "Bind")]
+    public async Task Rpc_WithConfiguredPermission_IsAllowed(
+        string permission,
+        string rpc)
+    {
+        await RunAuthorizationRpcScenarioAsync(
+            permission,
+            rpc,
+            registerPresentedCertificate: true,
+            authorizationEnabled: true,
+            expectedStatus: null);
+    }
+
+    [Theory]
+    [InlineData("Publish", "LeaseNext")]
+    [InlineData("Consume", "DeclareQueue")]
+    [InlineData("Admin", "Publish")]
+    public async Task Rpc_WithoutConfiguredPermission_ReturnsPermissionDenied(
+        string permission,
+        string rpc)
+    {
+        await RunAuthorizationRpcScenarioAsync(
+            permission,
+            rpc,
+            registerPresentedCertificate: true,
+            authorizationEnabled: true,
+            expectedStatus: StatusCode.PermissionDenied);
+    }
+
+    [Fact]
+    public async Task Rpc_WithUnregisteredTrustedCertificate_ReturnsUnauthenticated()
+    {
+        await RunAuthorizationRpcScenarioAsync(
+            "Publish",
+            "Publish",
+            registerPresentedCertificate: false,
+            authorizationEnabled: true,
+            expectedStatus: StatusCode.Unauthenticated);
+    }
+
+    [Fact]
+    public async Task Rpc_WithAuthorizationDisabled_PreservesMutualTlsAccess()
+    {
+        await RunAuthorizationRpcScenarioAsync(
+            "Publish",
+            "Publish",
+            registerPresentedCertificate: false,
+            authorizationEnabled: false,
+            expectedStatus: null);
+    }
+
+    private static GrpcTransportServer CreateServer(
+        IConfiguration configuration,
+        IMessagePublisher? publisher = null,
+        IMessageQueueStore? queueStore = null,
+        IRoutingStore? routingStore = null)
     {
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(value => value.EnvironmentName).Returns(Environments.Development);
         environment.SetupGet(value => value.ContentRootPath).Returns(Directory.GetCurrentDirectory());
         return new GrpcTransportServer(
-            Mock.Of<IMessagePublisher>(),
-            Mock.Of<IMessageQueueStore>(),
-            Mock.Of<IRoutingStore>(),
+            publisher ?? Mock.Of<IMessagePublisher>(),
+            queueStore ?? Mock.Of<IMessageQueueStore>(),
+            routingStore ?? Mock.Of<IRoutingStore>(),
             configuration,
             environment.Object);
     }
@@ -372,6 +452,308 @@ public sealed class GrpcTransportServerTests
             issuedWithPrivateKey.Export(X509ContentType.Pfx),
             null,
             X509KeyStorageFlags.Exportable);
+    }
+
+    private static async Task RunAuthorizationRpcScenarioAsync(
+        string permission,
+        string rpc,
+        bool registerPresentedCertificate,
+        bool authorizationEnabled,
+        StatusCode? expectedStatus)
+    {
+        var tempDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "RocketMQ.Tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+        var serverCertificatePath = Path.Combine(tempDirectory, "server.pfx");
+        var clientCaPath = Path.Combine(tempDirectory, "client-ca.cer");
+        const string serverCertificatePassword = "test-password";
+        using var clientCa = CreateCertificateAuthority("CN=RocketMQ authorization client CA");
+        using var presentedCertificate = CreateIssuedCertificate(
+            clientCa,
+            "CN=presented-client",
+            "1.3.6.1.5.5.7.3.2",
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            DateTimeOffset.UtcNow.AddDays(1));
+        using var registeredCertificate = registerPresentedCertificate
+            ? null
+            : CreateIssuedCertificate(
+                clientCa,
+                "CN=registered-client",
+                "1.3.6.1.5.5.7.3.2",
+                DateTimeOffset.UtcNow.AddMinutes(-5),
+                DateTimeOffset.UtcNow.AddDays(1));
+        using var serverCertificate = CreateServerCertificate();
+        await File.WriteAllBytesAsync(
+            serverCertificatePath,
+            serverCertificate.Export(X509ContentType.Pfx, serverCertificatePassword),
+            TestContext.Current.CancellationToken);
+        await File.WriteAllBytesAsync(
+            clientCaPath,
+            clientCa.Export(X509ContentType.Cert),
+            TestContext.Current.CancellationToken);
+
+        var port = GetAvailablePort();
+        var configuration = CreateConfiguration($"https://127.0.0.1:{port}");
+        configuration["Kestrel:Endpoints:Grpc:Certificate:Path"] = serverCertificatePath;
+        configuration["Kestrel:Endpoints:Grpc:Certificate:Password"] = serverCertificatePassword;
+        configuration["RocketMQ:Security:MutualTls:Enabled"] = "true";
+        configuration["RocketMQ:Security:MutualTls:TrustedClientCaPath"] = clientCaPath;
+        configuration["RocketMQ:Security:Authorization:Enabled"] = authorizationEnabled.ToString();
+        if (authorizationEnabled)
+        {
+            var configuredCertificate = registeredCertificate ?? presentedCertificate;
+            configuration[
+                "RocketMQ:Security:Authorization:Clients:test-client:CertificateSha256Fingerprints:0"] =
+                configuredCertificate.GetCertHashString(HashAlgorithmName.SHA256);
+            configuration[
+                "RocketMQ:Security:Authorization:Clients:test-client:Permissions:0"] =
+                permission;
+        }
+
+        var publisher = new Mock<IMessagePublisher>();
+        publisher
+            .Setup(value => value.PublishAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Envelope>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((
+                Guid publishId,
+                Envelope envelope,
+                CancellationToken cancellationToken) =>
+                new PublishResult(
+                    publishId,
+                    Guid.NewGuid(),
+                    PublishStatus.Accepted,
+                    ["test-queue"]));
+        var queueStore = new Mock<IMessageQueueStore>();
+        queueStore
+            .Setup(value => value.LeaseNextAsync(
+                It.IsAny<string>(),
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((LeasedMessage?)null);
+        queueStore
+            .Setup(value => value.AckAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        queueStore
+            .Setup(value => value.NackAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var routingStore = new Mock<IRoutingStore>();
+        routingStore
+            .Setup(value => value.DeclareExchangeAsync(
+                It.IsAny<Exchange>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        routingStore
+            .Setup(value => value.DeclareQueueAsync(
+                It.IsAny<QueueDefinition>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        routingStore
+            .Setup(value => value.BindAsync(
+                It.IsAny<Binding>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var server = CreateServer(
+            configuration,
+            publisher.Object,
+            queueStore.Object,
+            routingStore.Object);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        try
+        {
+            await server.StartAsync(timeout.Token);
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (
+                    _,
+                    certificate,
+                    _,
+                    _) => certificate?.GetCertHashString() == serverCertificate.GetCertHashString()
+            };
+            handler.ClientCertificates.Add(presentedCertificate);
+            using var channel = GrpcChannel.ForAddress(
+                $"https://127.0.0.1:{port}",
+                new GrpcChannelOptions { HttpHandler = handler });
+
+            if (expectedStatus is null)
+            {
+                await InvokeRpcAsync(channel.CreateCallInvoker(), rpc, timeout.Token);
+            }
+            else
+            {
+                var exception = await Assert.ThrowsAsync<RpcException>(
+                    () => InvokeRpcAsync(channel.CreateCallInvoker(), rpc, timeout.Token));
+                Assert.Equal(expectedStatus, exception.StatusCode);
+                VerifyRpcWasNotDispatched(
+                    rpc,
+                    publisher,
+                    queueStore,
+                    routingStore);
+            }
+        }
+        finally
+        {
+            await server.StopAsync(CancellationToken.None);
+            Directory.Delete(tempDirectory, true);
+        }
+    }
+
+    private static void VerifyRpcWasNotDispatched(
+        string rpc,
+        Mock<IMessagePublisher> publisher,
+        Mock<IMessageQueueStore> queueStore,
+        Mock<IRoutingStore> routingStore)
+    {
+        switch (rpc)
+        {
+            case "Publish":
+                publisher.Verify(
+                    value => value.PublishAsync(
+                        It.IsAny<Guid>(),
+                        It.IsAny<Envelope>(),
+                        It.IsAny<CancellationToken>()),
+                    Times.Never);
+                break;
+            case "LeaseNext":
+            case "Ack":
+            case "Nack":
+                queueStore.VerifyNoOtherCalls();
+                break;
+            case "DeclareExchange":
+            case "DeclareQueue":
+            case "Bind":
+                routingStore.VerifyNoOtherCalls();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(rpc));
+        }
+    }
+
+    private static async Task InvokeRpcAsync(
+        CallInvoker invoker,
+        string rpc,
+        CancellationToken cancellationToken)
+    {
+        switch (rpc)
+        {
+            case "Publish":
+                await InvokeUnaryAsync(
+                    invoker,
+                    "rocketmq.v1.Producer",
+                    "Publish",
+                    new PublishRequest
+                    {
+                        ExchangeName = "test-exchange",
+                        PublishId = Guid.NewGuid().ToString()
+                    },
+                    PublishResponse.Parser,
+                    cancellationToken);
+                break;
+            case "LeaseNext":
+                await InvokeUnaryAsync(
+                    invoker,
+                    "rocketmq.v1.Consumer",
+                    "LeaseNext",
+                    new LeaseRequest
+                    {
+                        QueueName = "test-queue",
+                        VisibilityTimeoutSeconds = 30
+                    },
+                    LeaseResponse.Parser,
+                    cancellationToken);
+                break;
+            case "Ack":
+                await InvokeUnaryAsync(
+                    invoker,
+                    "rocketmq.v1.Consumer",
+                    "Ack",
+                    new AckRequest { LeaseId = Guid.NewGuid().ToString() },
+                    AckResponse.Parser,
+                    cancellationToken);
+                break;
+            case "Nack":
+                await InvokeUnaryAsync(
+                    invoker,
+                    "rocketmq.v1.Consumer",
+                    "Nack",
+                    new NackRequest { LeaseId = Guid.NewGuid().ToString(), Requeue = true },
+                    AckResponse.Parser,
+                    cancellationToken);
+                break;
+            case "DeclareExchange":
+                await InvokeUnaryAsync(
+                    invoker,
+                    "rocketmq.v1.Admin",
+                    "DeclareExchange",
+                    new DeclareExchangeRequest
+                    {
+                        ExchangeName = "test-exchange",
+                        ExchangeType = "Direct"
+                    },
+                    AdminResponse.Parser,
+                    cancellationToken);
+                break;
+            case "DeclareQueue":
+                await InvokeUnaryAsync(
+                    invoker,
+                    "rocketmq.v1.Admin",
+                    "DeclareQueue",
+                    new DeclareQueueRequest { QueueName = "test-queue" },
+                    AdminResponse.Parser,
+                    cancellationToken);
+                break;
+            case "Bind":
+                await InvokeUnaryAsync(
+                    invoker,
+                    "rocketmq.v1.Admin",
+                    "Bind",
+                    new BindRequest
+                    {
+                        ExchangeName = "test-exchange",
+                        QueueName = "test-queue",
+                        RoutingKey = "test"
+                    },
+                    AdminResponse.Parser,
+                    cancellationToken);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(rpc));
+        }
+    }
+
+    private static async Task<TResponse> InvokeUnaryAsync<TRequest, TResponse>(
+        CallInvoker invoker,
+        string serviceName,
+        string methodName,
+        TRequest request,
+        MessageParser<TResponse> responseParser,
+        CancellationToken cancellationToken)
+        where TRequest : class, IMessage<TRequest>
+        where TResponse : class, IMessage<TResponse>
+    {
+        var method = new Method<TRequest, TResponse>(
+            MethodType.Unary,
+            serviceName,
+            methodName,
+            Marshallers.Create<TRequest>(
+                message => message.ToByteArray(),
+                _ => throw new NotSupportedException()),
+            Marshallers.Create<TResponse>(
+                message => message.ToByteArray(),
+                payload => responseParser.ParseFrom(payload)));
+        using var call = invoker.AsyncUnaryCall(
+            method,
+            host: null,
+            new CallOptions(cancellationToken: cancellationToken),
+            request);
+        return await call.ResponseAsync;
     }
 
     private static async Task RunMutualTlsHandshakeAsync(

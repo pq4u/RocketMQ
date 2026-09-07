@@ -67,3 +67,7 @@ Use `--client-certificate-key-path` when the client certificate is PEM. The
 certificate is loaded once and attached to the benchmark's single reusable
 HTTP/2 channel. The JSON scenario records whether mTLS was enabled.
 
+When operation authorization is enabled, register the certificate fingerprint
+with both Admin and Publish. The benchmark creates its topology before it
+starts publishing.
+
