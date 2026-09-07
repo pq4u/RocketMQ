@@ -88,6 +88,7 @@ public sealed record BenchmarkScenario(
     TimeSpan Warmup,
     TimeSpan Duration,
     bool DetailedTimings,
+    bool MutualTls,
     string ExchangeName,
     IReadOnlyList<string> QueueNames);
 

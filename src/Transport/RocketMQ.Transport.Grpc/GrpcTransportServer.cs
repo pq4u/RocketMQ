@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -16,6 +17,7 @@ public sealed class GrpcTransportServer : ITransportServer
     private readonly IConfiguration _configuration;
     private readonly IHostEnvironment? _hostEnvironment;
     private WebApplication? _app;
+    private ClientCertificateValidator? _clientCertificateValidator;
 
     public GrpcTransportServer(
         IMessagePublisher publisher,
@@ -34,34 +36,77 @@ public sealed class GrpcTransportServer : ITransportServer
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var transportConfiguration = CreateTransportConfiguration(_configuration);
-        ValidateEndpointConfiguration(transportConfiguration);
+        var mutualTlsEnabled = IsMutualTlsEnabled(transportConfiguration);
+        ValidateEndpointConfiguration(transportConfiguration, mutualTlsEnabled);
+        _clientCertificateValidator = mutualTlsEnabled
+            ? ClientCertificateValidator.Load(transportConfiguration)
+            : null;
 
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        try
         {
-            EnvironmentName = _hostEnvironment?.EnvironmentName,
-            ContentRootPath = _hostEnvironment?.ContentRootPath
-        });
-        builder.Configuration.AddConfiguration(transportConfiguration);
-        builder.WebHost.ConfigureKestrel(
-            options => options.Configure(transportConfiguration.GetSection("Kestrel")));
-        builder.Services.AddGrpc();
-        builder.Services.AddSingleton(_publisher);
-        builder.Services.AddSingleton(_queueStore);
-        builder.Services.AddSingleton(_routingStore);
-        _app = builder.Build();
-        _app.MapGrpcService<ProducerService>();
-        _app.MapGrpcService<ConsumerService>();
-        _app.MapGrpcService<AdminService>();
-        await _app.StartAsync(cancellationToken);
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            {
+                EnvironmentName = _hostEnvironment?.EnvironmentName,
+                ContentRootPath = _hostEnvironment?.ContentRootPath
+            });
+            builder.Configuration.AddConfiguration(transportConfiguration);
+            builder.WebHost.ConfigureKestrel(options =>
+            {
+                if (_clientCertificateValidator is not null)
+                {
+                    options.ConfigureHttpsDefaults(httpsOptions =>
+                    {
+                        httpsOptions.ClientCertificateMode = ClientCertificateMode.RequireCertificate;
+                        httpsOptions.ClientCertificateValidation = _clientCertificateValidator.Validate;
+                    });
+                }
+
+                options.Configure(transportConfiguration.GetSection("Kestrel"));
+            });
+            builder.Services.AddGrpc();
+            builder.Services.AddSingleton(_publisher);
+            builder.Services.AddSingleton(_queueStore);
+            builder.Services.AddSingleton(_routingStore);
+            _app = builder.Build();
+            _app.MapGrpcService<ProducerService>();
+            _app.MapGrpcService<ConsumerService>();
+            _app.MapGrpcService<AdminService>();
+            await _app.StartAsync(cancellationToken);
+        }
+        catch
+        {
+            try
+            {
+                await DisposeAppAsync();
+            }
+            finally
+            {
+                DisposeClientCertificateValidator();
+            }
+
+            throw;
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_app is not null)
+        try
         {
-            await _app.StopAsync(cancellationToken);
-            await _app.DisposeAsync();
-            _app = null;
+            if (_app is not null)
+            {
+                await _app.StopAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            try
+            {
+                await DisposeAppAsync();
+            }
+            finally
+            {
+                DisposeClientCertificateValidator();
+            }
         }
     }
 
@@ -73,12 +118,14 @@ public sealed class GrpcTransportServer : ITransportServer
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Kestrel:Endpoints:Grpc:Url"] = "https://localhost:50051",
-                ["Kestrel:Endpoints:Grpc:Protocols"] = "Http2"
+                ["Kestrel:Endpoints:Grpc:Protocols"] = "Http2",
+                ["RocketMQ:Security:MutualTls:Enabled"] = "false",
+                ["RocketMQ:Security:MutualTls:RevocationMode"] = "NoCheck"
             })
             .AddConfiguration(configuration)
             .Build();
 
-    private static void ValidateEndpointConfiguration(IConfiguration configuration)
+    private static void ValidateEndpointConfiguration(IConfiguration configuration, bool mutualTlsEnabled)
     {
         var endpoints = configuration.GetSection("Kestrel:Endpoints").GetChildren().ToArray();
         if (!endpoints.Any(endpoint => string.Equals(endpoint.Key, "Grpc", StringComparison.OrdinalIgnoreCase)))
@@ -101,11 +148,59 @@ public sealed class GrpcTransportServer : ITransportServer
                     $"Kestrel endpoint '{endpoint.Key}' must use HTTPS. Insecure HTTP is allowed only on a loopback address.");
             }
 
+            if (mutualTlsEnabled && !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Kestrel endpoint '{endpoint.Key}' must use HTTPS when mutual TLS is enabled.");
+            }
+
+            var configuredClientCertificateMode = endpoint["ClientCertificateMode"]
+                ?? configuration["Kestrel:EndpointDefaults:ClientCertificateMode"];
+            if (mutualTlsEnabled
+                && configuredClientCertificateMode is not null
+                && !string.Equals(
+                    configuredClientCertificateMode,
+                    nameof(ClientCertificateMode.RequireCertificate),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Kestrel endpoint '{endpoint.Key}' must use ClientCertificateMode RequireCertificate when mutual TLS is enabled.");
+            }
+
             var protocols = endpoint["Protocols"] ?? configuration["Kestrel:EndpointDefaults:Protocols"];
             if (!string.Equals(protocols, "Http2", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException($"Kestrel endpoint '{endpoint.Key}' must use the Http2 protocol.");
             }
         }
+    }
+
+    private static bool IsMutualTlsEnabled(IConfiguration configuration)
+    {
+        var value = configuration["RocketMQ:Security:MutualTls:Enabled"];
+        if (!bool.TryParse(value, out var enabled))
+        {
+            throw new InvalidOperationException(
+                "RocketMQ:Security:MutualTls:Enabled must be true or false.");
+        }
+
+        return enabled;
+    }
+
+    private async Task DisposeAppAsync()
+    {
+        if (_app is null)
+        {
+            return;
+        }
+
+        await _app.DisposeAsync();
+        _app = null;
+    }
+
+    private void DisposeClientCertificateValidator()
+    {
+        _clientCertificateValidator?.Dispose();
+        _clientCertificateValidator = null;
     }
 }

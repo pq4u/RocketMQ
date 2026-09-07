@@ -16,6 +16,7 @@ public sealed class BenchmarkOptionsTests
         Assert.Equal(RoutingMode.Direct, options.Routing);
         Assert.Equal(1, options.QueueCount);
         Assert.False(options.DetailedTimings);
+        Assert.False(options.MutualTlsEnabled);
     }
 
     [Fact]
@@ -51,5 +52,45 @@ public sealed class BenchmarkOptionsTests
             "--detailed-timings", "true"]);
 
         Assert.True(options.DetailedTimings);
+    }
+
+    [Fact]
+    public void Parse_AcceptsMutualTlsCertificateOptions()
+    {
+        var options = BenchmarkOptions.Parse([
+            "--endpoint", "https://localhost:50051",
+            "--database-path", "D:\\bench\\broker.db",
+            "--client-certificate-path", "D:\\certs\\client.pem",
+            "--client-certificate-key-path", "D:\\certs\\client.key",
+            "--client-certificate-password-env", "ROCKETMQ_CLIENT_CERTIFICATE_PASSWORD"]);
+
+        Assert.True(options.MutualTlsEnabled);
+        Assert.Equal("D:\\certs\\client.pem", options.ClientCertificatePath);
+        Assert.Equal("D:\\certs\\client.key", options.ClientCertificateKeyPath);
+        Assert.Equal(
+            "ROCKETMQ_CLIENT_CERTIFICATE_PASSWORD",
+            options.ClientCertificatePasswordEnvironmentVariable);
+    }
+
+    [Fact]
+    public void Parse_RejectsClientCertificateWithHttpEndpoint()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => BenchmarkOptions.Parse([
+            "--endpoint", "http://localhost:50051",
+            "--database-path", "D:\\bench\\broker.db",
+            "--client-certificate-path", "D:\\certs\\client.pfx"]));
+
+        Assert.Contains("only with an HTTPS endpoint", exception.Message);
+    }
+
+    [Fact]
+    public void Parse_RejectsClientCertificateKeyWithoutCertificate()
+    {
+        var exception = Assert.Throws<ArgumentException>(() => BenchmarkOptions.Parse([
+            "--endpoint", "https://localhost:50051",
+            "--database-path", "D:\\bench\\broker.db",
+            "--client-certificate-key-path", "D:\\certs\\client.key"]));
+
+        Assert.Contains("--client-certificate-path is required", exception.Message);
     }
 }

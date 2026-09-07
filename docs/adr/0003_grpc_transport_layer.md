@@ -9,7 +9,10 @@ Proposed
 > **Implementation note (2026-09-06):** the three unary gRPC services and the
 > protobuf contract are implemented. Runner defaults to HTTPS on localhost:50051
 > with HTTP/2 and a Kestrel-managed server certificate; explicit cleartext mode
-> is restricted to loopback. ProducerService calls the durable IMessagePublisher directly. A full
+> is restricted to loopback. Optional mTLS requires a client certificate chained
+> to a configured private CA; when enabled, it also disables cleartext loopback.
+> Client certificate validation occurs during the TLS handshake and applies to all
+> three services without changing the protobuf contract. ProducerService calls the durable IMessagePublisher directly. A full
 > internal buffer is not currently mapped to RESOURCE_EXHAUSTED, so the
 > backpressure behavior proposed below is not the current wire behavior.
 

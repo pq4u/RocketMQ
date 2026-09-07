@@ -8,6 +8,12 @@ services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Warning));
 services.AddRocketMQClient(options =>
 {
     options.Endpoint = "https://localhost:50051";
+    options.ClientCertificatePath = Environment.GetEnvironmentVariable(
+        "ROCKETMQ_CLIENT_CERTIFICATE_PATH");
+    options.ClientCertificateKeyPath = Environment.GetEnvironmentVariable(
+        "ROCKETMQ_CLIENT_CERTIFICATE_KEY_PATH");
+    options.ClientCertificatePassword = Environment.GetEnvironmentVariable(
+        "ROCKETMQ_CLIENT_CERTIFICATE_PASSWORD");
 });
 
 await using var serviceProvider = services.BuildServiceProvider();

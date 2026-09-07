@@ -13,6 +13,7 @@ Tutorial prowadzi jedną sprawdzoną ścieżką od uruchomienia brokera do potwi
 Instrukcje zakładają, że znasz podstawowy przepływ i chcesz wykonać konkretne zadanie.
 
 - [Uruchom broker z SQLite](how-to/uruchom-broker.md).
+- [Skonfiguruj wzajemne TLS](how-to/skonfiguruj-mtls.md).
 - [Skonfiguruj SQLite i batching publikacji](how-to/skonfiguruj-persistence.md).
 - [Publikuj komunikaty idempotentnie](how-to/publikuj-idempotentnie.md).
 - [Zaimplementuj konsumenta](how-to/zaimplementuj-konsumenta.md).

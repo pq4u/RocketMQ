@@ -33,6 +33,10 @@ dotnet run --project tools/RocketMQ.Benchmark -- --endpoint https://localhost:50
 
 Diagnostyka zmienia ilość wykonywanej pracy. Porównuj ze sobą wyłącznie uruchomienia z tym samym ustawieniem.
 
+## Zmierz wariant mTLS
+
+Jeśli broker wymaga certyfikatu klienta, dodaj opcje <code>--client-certificate-path</code> i <code>--client-certificate-password-env</code>. Raport zapisze <code>MutualTls=true</code>. Porównując TLS z mTLS, zachowaj tę samą topologię, liczbę workerów i czas rozgrzewki; koszt weryfikacji certyfikatu występuje przy tworzeniu połączenia, a nie przy każdym Publish. Przygotowanie certyfikatów opisuje instrukcja [Skonfiguruj wzajemne TLS](skonfiguruj-mtls.md).
+
 ## Porównaj wyniki
 
 Wykonaj co najmniej trzy powtórzenia przy niezmienionym kodzie, runtime, sprzęcie, bazie początkowej i konfiguracji. Porównaj throughput, p50, p95, p99, maksimum, błędy oraz wzrost plików SQLite.

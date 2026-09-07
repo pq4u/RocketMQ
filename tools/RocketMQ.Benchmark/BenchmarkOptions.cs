@@ -16,8 +16,13 @@ public sealed record BenchmarkOptions(
     RoutingMode Routing,
     int QueueCount,
     bool DetailedTimings,
-    string ResultsDirectory)
+    string ResultsDirectory,
+    string? ClientCertificatePath,
+    string? ClientCertificateKeyPath,
+    string? ClientCertificatePasswordEnvironmentVariable)
 {
+    public bool MutualTlsEnabled => ClientCertificatePath is not null;
+
     public static BenchmarkOptions Parse(string[] args)
     {
         var values = ParseValues(args);
@@ -36,6 +41,11 @@ public sealed record BenchmarkOptions(
         var routing = ParseRouting(values.GetValueOrDefault("routing", "direct"));
         var detailedTimings = ParseBool(values, "detailed-timings", false);
         var resultsDirectory = values.GetValueOrDefault("results-dir", Path.Combine("artifacts", "benchmarks"));
+        var clientCertificatePath = Optional(values, "client-certificate-path");
+        var clientCertificateKeyPath = Optional(values, "client-certificate-key-path");
+        var clientCertificatePasswordEnvironmentVariable = Optional(
+            values,
+            "client-certificate-password-env");
 
         if (duration <= TimeSpan.Zero)
         {
@@ -57,7 +67,33 @@ public sealed record BenchmarkOptions(
             throw new ArgumentException("--queue-count must be 1 when --routing is direct.");
         }
 
-        return new BenchmarkOptions(endpoint, databasePath, duration, warmup, workers, payloadBytes, routing, queueCount, detailedTimings, resultsDirectory);
+        if (clientCertificatePath is null
+            && (clientCertificateKeyPath is not null
+                || clientCertificatePasswordEnvironmentVariable is not null))
+        {
+            throw new ArgumentException(
+                "--client-certificate-path is required when a client certificate key or password environment variable is configured.");
+        }
+
+        if (clientCertificatePath is not null && endpoint.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new ArgumentException("A client certificate can be used only with an HTTPS endpoint.");
+        }
+
+        return new BenchmarkOptions(
+            endpoint,
+            databasePath,
+            duration,
+            warmup,
+            workers,
+            payloadBytes,
+            routing,
+            queueCount,
+            detailedTimings,
+            resultsDirectory,
+            clientCertificatePath,
+            clientCertificateKeyPath,
+            clientCertificatePasswordEnvironmentVariable);
     }
 
     public static string Usage => """
@@ -72,6 +108,9 @@ public sealed record BenchmarkOptions(
           --queue-count <int>         Fanout destination count; default 1.
           --detailed-timings <bool>   Include opt-in server timing breakdown; default false.
           --results-dir <path>        JSON report directory; default artifacts/benchmarks.
+          --client-certificate-path <path>       Client PFX/P12 or PEM certificate for mTLS.
+          --client-certificate-key-path <path>   Private key path when the certificate is PEM.
+          --client-certificate-password-env <name> Environment variable containing the certificate password.
         """;
 
     private static Dictionary<string, string> ParseValues(string[] args)
@@ -98,6 +137,13 @@ public sealed record BenchmarkOptions(
         => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
             ? value
             : throw new ArgumentException($"--{key} is required.\n{Usage}");
+
+    private static string? Optional(IReadOnlyDictionary<string, string> values, string key)
+        => values.TryGetValue(key, out var value)
+            ? !string.IsNullOrWhiteSpace(value)
+                ? value
+                : throw new ArgumentException($"--{key} must not be empty.")
+            : null;
 
     private static Uri RequiredUri(IReadOnlyDictionary<string, string> values, string key)
     {

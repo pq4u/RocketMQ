@@ -20,6 +20,7 @@ Rejestr łączy twierdzenia raportu z artefaktem możliwym do sprawdzenia. Ście
 | EVID-014 | Przykład publicznej ścieżki SDK jest częścią builda | [RocketMQ.Example](../../examples/RocketMQ.Example/) |
 | EVID-015 | Benchmark zapisuje raport środowiska i percentyle | [narzędzie benchmarkowe](../../tools/RocketMQ.Benchmark/) |
 | EVID-016 | Runner domyślnie używa TLS, negocjuje HTTP/2 i blokuje HTTP poza loopback | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
+| EVID-017 | Opcjonalne mTLS wymaga certyfikatu klienta z prywatnego CA i odrzuca brak certyfikatu, obce CA, wygaśnięcie oraz zły EKU | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
 
 ## Źródła zewnętrzne
 
@@ -30,6 +31,7 @@ Rejestr łączy twierdzenia raportu z artefaktem możliwym do sprawdzenia. Ście
 - [Protocol Buffers proto3](https://protobuf.dev/programming-guides/proto3/) — kontrakt i reguły ewolucji pól.
 - [Kestrel endpoints](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/servers/kestrel/endpoints?view=aspnetcore-10.0) — konfiguracja HTTPS oraz źródeł certyfikatów.
 - [gRPC security](https://learn.microsoft.com/en-us/aspnet/core/grpc/security?view=aspnetcore-10.0) — zastosowanie TLS w usługach gRPC ASP.NET Core.
+- [ASP.NET Core certificate authentication](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/certauth?view=aspnetcore-10.0) — żądanie i walidacja certyfikatów klientów.
 - [dotnet dev-certs](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-dev-certs) — tworzenie i zaufanie lokalnemu certyfikatowi HTTPS.
 - [SQLite WAL](https://sqlite.org/wal.html) — właściwości i ograniczenia trybu WAL.
 - [SQLite transactions](https://sqlite.org/lang_transaction.html) — atomowość i model transakcji.

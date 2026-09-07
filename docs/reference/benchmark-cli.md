@@ -18,7 +18,12 @@ dotnet run --project tools/RocketMQ.Benchmark -- --endpoint https://localhost:50
 | <code>--queue-count</code> | 1 | dodatnia; dla direct dokładnie 1 |
 | <code>--detailed-timings</code> | false | true albo false |
 | <code>--results-dir</code> | artifacts/benchmarks | katalog raportów JSON |
+| <code>--client-certificate-path</code> | brak | bezwzględna ścieżka PFX/P12 albo PEM; wymaga endpointu HTTPS |
+| <code>--client-certificate-key-path</code> | brak | klucz prywatny dla certyfikatu PEM |
+| <code>--client-certificate-password-env</code> | brak | nazwa zmiennej środowiskowej zawierającej hasło PFX lub zaszyfrowanego klucza PEM |
 
-Narzędzie tworzy unikalną topologię, nie konsumuje wiadomości i nie ponawia błędnego RPC. Raport zawiera liczniki, throughput, p50/p95/p99/max, błędy, środowisko oraz rozmiary plików db, WAL i SHM. Detailed timings wymagają zgodnych buildów klienta i serwera.
+Narzędzie tworzy unikalną topologię, nie konsumuje wiadomości i nie ponawia błędnego RPC. Raport zawiera liczniki, throughput, p50/p95/p99/max, błędy, środowisko, informację o użyciu mTLS oraz rozmiary plików db, WAL i SHM. Detailed timings wymagają zgodnych buildów klienta i serwera.
 
 Dla HTTPS certyfikat brokera musi być zaufany przez system uruchamiający benchmark.
+
+Benchmark ładuje certyfikat klienta raz i używa jednego kanału HTTP/2. Przykład pełnego polecenia znajduje się w instrukcji [Skonfiguruj wzajemne TLS](../how-to/skonfiguruj-mtls.md).

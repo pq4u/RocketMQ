@@ -15,7 +15,8 @@ Stan zweryfikowany względem bieżącego drzewa roboczego 6 września 2026.
 | SQLite WAL mode | działa | jeden writer, lokalny plik |
 | własny adapter WAL | niezaimplementowany | metody zgłaszają NotImplementedException |
 | TLS | działa i jest testowany | domyślny endpoint HTTPS; HTTP tylko na loopback |
-| uwierzytelnianie i autoryzacja | brak | każdy osiągalny klient ma pełny dostęp do RPC |
+| mTLS | działa i jest testowane, opt-in | prywatne CA z PEM/DER; walidacja przy handshake; restart przy rotacji |
+| autoryzacja | brak | każdy klient z ważnym certyfikatem ma pełny dostęp do RPC |
 | HA, replikacja, klaster | brak | pojedynczy proces |
 | streaming konsumenta | brak | SDK odpytuje LeaseNext |
 | automatyczne odnowienie lease | brak | dobierz visibility timeout |

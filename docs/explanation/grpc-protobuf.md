@@ -14,7 +14,7 @@ Wszystkie bieżące RPC są unary: jedno żądanie i jedna odpowiedź. Konsument
 flowchart LR
     APP[Aplikacja] --> SDK[SDK .NET]
     SDK --> STUB[Wygenerowany klient]
-    STUB -->|HTTP/2 + TLS| SERVICE[Usługa gRPC]
+    STUB -->|HTTP/2 + TLS lub mTLS| SERVICE[Usługa gRPC]
     SERVICE --> CORE[Port Core]
 ~~~
 
@@ -26,4 +26,6 @@ Błędy walidacji i domenowe są mapowane na kody gRPC. Przykładowo brak exchan
 
 ## Bezpieczeństwo
 
-Bieżący Runner domyślnie nasłuchuje na <code>https://localhost:50051</code> po HTTP/2 z TLS. Certyfikat serwera zabezpiecza poufność transmisji i pozwala klientowi zweryfikować serwer, ale nie identyfikuje klienta. Broker nadal nie ma uwierzytelniania, autoryzacji ani limitów per klient. Jawny tryb HTTP jest dozwolony wyłącznie na loopback.
+Bieżący Runner domyślnie nasłuchuje na <code>https://localhost:50051</code> po HTTP/2 z TLS. Certyfikat serwera zabezpiecza poufność transmisji i pozwala klientowi zweryfikować serwer. Opcjonalne mTLS żąda dodatkowo certyfikatu klienta i podczas handshake buduje jego łańcuch do skonfigurowanego prywatnego CA. Walidacja nie jest powtarzana dla każdego RPC na tym samym połączeniu HTTP/2.
+
+mTLS uwierzytelnia klienta, ale obecna implementacja nie mapuje certyfikatów na role ani ACL: każdy ważny certyfikat ma dostęp do Producer, Consumer i Admin. Broker nadal nie ma limitów per klient ani audytu bezpieczeństwa. Jawny tryb HTTP jest dozwolony wyłącznie na loopback, gdy mTLS jest wyłączone.

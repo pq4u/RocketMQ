@@ -51,3 +51,19 @@ Run each comparison on a fresh database. Perform three identical direct runs bef
 
 The HTTPS certificate must be trusted by the operating system running the benchmark.
 
+If the broker requires mTLS, supply a client certificate. The password is read
+from an environment variable so it isn't exposed in process arguments:
+
+```powershell
+$env:ROCKETMQ_CLIENT_CERTIFICATE_PASSWORD = "<secret>"
+dotnet run --project tools/RocketMQ.Benchmark -- `
+  --endpoint https://localhost:50051 `
+  --database-path D:\RocketMQData\rocketmq.db `
+  --client-certificate-path D:\certs\client.pfx `
+  --client-certificate-password-env ROCKETMQ_CLIENT_CERTIFICATE_PASSWORD
+```
+
+Use `--client-certificate-key-path` when the client certificate is PEM. The
+certificate is loaded once and attached to the benchmark's single reusable
+HTTP/2 channel. The JSON scenario records whether mTLS was enabled.
+

@@ -10,7 +10,10 @@ Proposed
 > Producer, Consumer and Admin facades exist. Producer retries
 > RESOURCE_EXHAUSTED with exponential delays, but without jitter; the current
 > server path does not emit that status for a full publisher buffer. Consumer
-> uses unary polling and has no lease renewal. The canonical current API is
+> uses unary polling and has no lease renewal. The SDK can attach a PFX/P12 or
+> PEM client certificate to all generated gRPC clients for optional mTLS; it
+> loads the certificate during DI registration and requires restart-based rotation.
+> The canonical current API is
 > documented in [SDK .NET](../reference/dotnet-sdk.md).
 
 ## Context

@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Google.Protobuf;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -73,7 +75,8 @@ public sealed class BenchmarkRunner
         var exchangeName = $"{runId}.exchange";
         var queueNames = Enumerable.Range(1, _options.QueueCount).Select(index => $"{runId}.queue.{index}").ToArray();
         var storageBefore = CaptureStorage(_options.DatabasePath);
-        using var channel = GrpcChannel.ForAddress(_options.Endpoint);
+        using var clientCertificate = LoadClientCertificate(_options);
+        using var channel = CreateChannel(_options.Endpoint, clientCertificate);
         var admin = new Admin.AdminClient(channel);
         var producer = new Producer.ProducerClient(channel);
         await DeclareTopologyAsync(admin, exchangeName, queueNames, ct);
@@ -94,7 +97,7 @@ public sealed class BenchmarkRunner
             completedAtUtc,
             _options.Endpoint.ToString(),
             _options.DatabasePath,
-            new BenchmarkScenario(_options.Routing.ToString(), _options.QueueCount, _options.Workers, _options.PayloadBytes, _options.Warmup, _options.Duration, _options.DetailedTimings, exchangeName, queueNames),
+            new BenchmarkScenario(_options.Routing.ToString(), _options.QueueCount, _options.Workers, _options.PayloadBytes, _options.Warmup, _options.Duration, _options.DetailedTimings, _options.MutualTlsEnabled, exchangeName, queueNames),
             counts,
             counts.Accepted / durationSeconds,
             LatencyStatistics.FromTicks(measurement.Latencies),
@@ -103,6 +106,80 @@ public sealed class BenchmarkRunner
             storageBefore,
             storageAfter,
             BenchmarkEnvironment.Capture());
+    }
+
+    private static GrpcChannel CreateChannel(Uri endpoint, X509Certificate2? clientCertificate)
+    {
+        if (clientCertificate is null)
+        {
+            return GrpcChannel.ForAddress(endpoint);
+        }
+
+        var handler = new HttpClientHandler();
+        handler.ClientCertificates.Add(clientCertificate);
+        return GrpcChannel.ForAddress(endpoint, new GrpcChannelOptions { HttpHandler = handler });
+    }
+
+    private static X509Certificate2? LoadClientCertificate(BenchmarkOptions options)
+    {
+        if (options.ClientCertificatePath is null)
+        {
+            return null;
+        }
+
+        var certificatePath = ValidateCertificateFile(
+            options.ClientCertificatePath,
+            "--client-certificate-path");
+        var keyPath = options.ClientCertificateKeyPath is null
+            ? null
+            : ValidateCertificateFile(
+                options.ClientCertificateKeyPath,
+                "--client-certificate-key-path");
+        var password = options.ClientCertificatePasswordEnvironmentVariable is null
+            ? null
+            : Environment.GetEnvironmentVariable(options.ClientCertificatePasswordEnvironmentVariable)
+                ?? throw new ArgumentException(
+                    $"Environment variable '{options.ClientCertificatePasswordEnvironmentVariable}' is not set.");
+
+        try
+        {
+            var certificate = keyPath is null
+                ? X509CertificateLoader.LoadPkcs12FromFile(
+                    certificatePath,
+                    password,
+                    X509KeyStorageFlags.DefaultKeySet)
+                : string.IsNullOrEmpty(password)
+                    ? X509Certificate2.CreateFromPemFile(certificatePath, keyPath)
+                    : X509Certificate2.CreateFromEncryptedPemFile(certificatePath, password, keyPath);
+            if (!certificate.HasPrivateKey)
+            {
+                certificate.Dispose();
+                throw new ArgumentException("The client certificate must include a private key.");
+            }
+
+            return certificate;
+        }
+        catch (CryptographicException exception)
+        {
+            throw new ArgumentException(
+                "The client certificate could not be loaded. Check its format, private key, and password.",
+                exception);
+        }
+    }
+
+    private static string ValidateCertificateFile(string path, string optionName)
+    {
+        if (!Path.IsPathFullyQualified(path))
+        {
+            throw new ArgumentException($"{optionName} must be an absolute path.");
+        }
+
+        if (!File.Exists(path))
+        {
+            throw new ArgumentException($"{optionName} file '{path}' does not exist.");
+        }
+
+        return path;
     }
 
     private async Task DeclareTopologyAsync(Admin.AdminClient admin, string exchangeName, IReadOnlyList<string> queueNames, CancellationToken ct)
