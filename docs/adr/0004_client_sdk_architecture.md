@@ -14,7 +14,8 @@ Proposed
 > PEM client certificate to all generated gRPC clients for optional mTLS; it
 > loads the certificate during DI registration and requires restart-based rotation.
 > The server may authorize that certificate for Publish, Consume, and Admin
-> independently; the SDK does not add a second credential or change its public API.
+> globally or for exact exchange/queue names. The SDK does not add a second
+> credential or change its public API; it includes the queue name in Ack/Nack.
 > The canonical current API is
 > documented in [SDK .NET](../reference/dotnet-sdk.md).
 

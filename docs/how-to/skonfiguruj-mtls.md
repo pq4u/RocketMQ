@@ -1,6 +1,6 @@
 # Skonfiguruj wzajemne TLS
 
-mTLS powoduje, że broker nie tylko przedstawia swój certyfikat TLS, ale również żąda certyfikatu od klienta. W RocketMQ jest to funkcja opcjonalna. Sama walidacja mTLS dopuszcza każdy certyfikat podpisany przez skonfigurowane CA. Opcjonalna autoryzacja mapuje fingerprint SHA-256 certyfikatu na klienta i niezależne uprawnienia <code>Publish</code>, <code>Consume</code> oraz <code>Admin</code>.
+mTLS powoduje, że broker nie tylko przedstawia swój certyfikat TLS, ale również żąda certyfikatu od klienta. W RocketMQ jest to funkcja opcjonalna. Sama walidacja mTLS dopuszcza każdy certyfikat podpisany przez skonfigurowane CA. Opcjonalna autoryzacja mapuje fingerprint SHA-256 certyfikatu na klienta i niezależne uprawnienia <code>Publish</code>, <code>Consume</code> oraz <code>Admin</code>. Uprawnienie może być globalne albo ograniczone do dokładnych nazw exchange lub kolejek.
 
 ## Utwórz lokalne CA i certyfikat klienta
 
@@ -65,7 +65,7 @@ Po włączeniu mTLS wszystkie endpointy muszą używać HTTPS. Brak CA, endpoint
 Oblicz fingerprint certyfikatu klienta. OpenSSL zwraca format z dwukropkami, który Runner akceptuje:
 
 ~~~powershell
-$fingerprintLine = openssl x509 -in "$certDirclient.pem" -noout -fingerprint -sha256
+$fingerprintLine = openssl x509 -in "$certDir\client.pem" -noout -fingerprint -sha256
 $fingerprint = ($fingerprintLine -split '=', 2)[1]
 ~~~
 
@@ -80,6 +80,42 @@ $env:RocketMQ__Security__Authorization__Clients__rocketmq_example__Permissions__
 ~~~
 
 Autoryzacja wymaga włączonego mTLS. Nieznany fingerprint powoduje gRPC <code>Unauthenticated</code>, a rozpoznany klient bez wymaganej roli otrzymuje <code>PermissionDenied</code>. Uprawnienia są niezależne: <code>Admin</code> nie daje automatycznie <code>Publish</code> ani <code>Consume</code>.
+
+## Ogranicz dostęp do exchange i kolejek
+
+Zamiast globalnej tablicy <code>Permissions</code> można przypisać dokładne nazwy zasobów. Poniższy klient może publikować tylko do <code>orders</code>, konsumować tylko <code>orders.worker</code> oraz administrować tym exchange i tą kolejką:
+
+~~~json
+{
+  "RocketMQ": {
+    "Security": {
+      "Authorization": {
+        "Enabled": true,
+        "Clients": {
+          "orders_worker": {
+            "CertificateSha256Fingerprints": [ "AA:BB:..." ],
+            "Permissions": [],
+            "Resources": {
+              "Exchanges": {
+                "Publish": [ "orders" ],
+                "Admin": [ "orders" ]
+              },
+              "Queues": {
+                "Consume": [ "orders.worker" ],
+                "Admin": [ "orders.worker" ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+~~~
+
+Nazwy są porównywane dokładnie i z uwzględnieniem wielkości liter; nie ma wildcardów ani prefiksów. Globalne <code>Publish</code>, <code>Consume</code> lub <code>Admin</code> nadal daje dostęp do wszystkich odpowiednich zasobów. <code>Bind</code> wymaga <code>Admin</code> zarówno dla exchange, jak i kolejki. Konfiguracja jest snapshotem ładowanym przy starcie, więc jej zmiana wymaga restartu.
+
+Broker przypisuje lease do stabilnego <code>ClientId</code>, a nie do pojedynczego fingerprintu. Dzięki temu drugi certyfikat wpisany dla tego samego klienta może wykonać <code>Ack</code>/<code>Nack</code> po rotacji. Inny klient nie może zakończyć cudzego lease'a i otrzyma <code>NotFound</code> bez ujawniania, czy lease istnieje.
 
 ## Połącz przykład lub benchmark
 

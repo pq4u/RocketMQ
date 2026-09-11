@@ -8,10 +8,14 @@
 | <code>NotFound</code> | brak exchange przy publikacji albo brak lease |
 | <code>AlreadyExists</code> | ten sam PublishId użyty z inną treścią |
 | <code>FailedPrecondition</code> | lease istniał, ale wygasł lub nie jest aktywny |
+| <code>Unauthenticated</code> | certyfikat mTLS nie jest przypisany do klienta w allowliście |
+| <code>PermissionDenied</code> | klient nie ma globalnego ani zasobowego uprawnienia do operacji |
 | <code>Cancelled</code> | anulowanie wywołania |
 | <code>ResourceExhausted</code> | SDK potrafi ponowić; bieżący serwer nie emituje go dla pełnego publishera |
 
 <code>Unroutable</code> jest statusem poprawnej odpowiedzi Publish, nie wyjątkiem gRPC.
+
+Próba Ack/Nack lease'a należącego do innego <code>ClientId</code> jest raportowana jako <code>NotFound</code>, aby nie ujawniać istnienia cudzego lease'a. Odmowy autoryzacji są logowane bez payloadu.
 
 Bieżący AdminService nie odrzuca nieznanego tekstu exchange_type: mapuje go na Direct. Jest to zachowanie implementacji, którego klient nie powinien wykorzystywać jako gwarantowanej normalizacji.
 

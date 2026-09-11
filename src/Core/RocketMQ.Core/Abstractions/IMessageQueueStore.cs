@@ -79,6 +79,30 @@ public interface IMessageQueueStore
     Task<LeasedMessage?> LeaseNextAsync(string queueName, TimeSpan visibilityTimeout, CancellationToken ct);
 
     /// <summary>
+    /// Atomically leases the next available message and associates the delivery
+    /// attempt with an adapter-neutral logical owner. A null owner preserves the
+    /// unauthenticated behavior of <see cref="LeaseNextAsync(string, TimeSpan, CancellationToken)"/>.
+    /// </summary>
+    Task<LeasedMessage?> LeaseNextAsync(
+        string queueName,
+        TimeSpan visibilityTimeout,
+        string? leaseOwnerId,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Returns the queue for an active lease owned by <paramref name="leaseOwnerId"/>.
+    /// This supports resource authorization for legacy acknowledgement requests
+    /// that do not carry a queue name.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the lease is unknown, belongs to another owner, or is expired.
+    /// </exception>
+    Task<string> GetActiveLeaseQueueAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        CancellationToken ct);
+
+    /// <summary>
     /// Permanently removes the message from the queue. The leaseId must
     /// correspond to a currently active (non-expired) lease.
     /// Contract points: 4 (ack semantics).
@@ -87,6 +111,17 @@ public interface IMessageQueueStore
     /// Thrown when leaseId does not correspond to an active lease.
     /// </exception>
     Task AckAsync(Guid leaseId, CancellationToken ct);
+
+    /// <summary>
+    /// Permanently removes an active lease only when its logical owner matches.
+    /// When <paramref name="expectedQueueName"/> is non-null, the queue must also
+    /// match atomically.
+    /// </summary>
+    Task AckAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct);
 
     /// <summary>
     /// Releases or dead-letters the message.
@@ -99,6 +134,17 @@ public interface IMessageQueueStore
     /// Thrown when leaseId does not correspond to an active lease.
     /// </exception>
     Task NackAsync(Guid leaseId, bool requeue, CancellationToken ct);
+
+    /// <summary>
+    /// Releases or dead-letters an active lease only when its logical owner and,
+    /// when supplied, expected queue match atomically.
+    /// </summary>
+    Task NackAsync(
+        Guid leaseId,
+        bool requeue,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct);
 
     /// <summary>
     /// Returns dead-lettered messages from the named queue for

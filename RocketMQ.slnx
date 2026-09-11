@@ -12,6 +12,11 @@
   <Folder Name="/src/Core/">
     <Project Path="src/Core/RocketMQ.Core/RocketMQ.Core.csproj" />
   </Folder>
+  <Folder Name="/src/Management/">
+    <Project Path="src/Management/RocketMQ.Management.Api/RocketMQ.Management.Api.csproj" />
+    <Project Path="src/Management/RocketMQ.Management.Contracts/RocketMQ.Management.Contracts.csproj" />
+    <Project Path="src/Management/RocketMQ.Management.Web/RocketMQ.Management.Web.csproj" />
+  </Folder>
   <Folder Name="/src/Persistence/">
     <Project Path="src/Persistence/RocketMQ.Persistence.Sqlite/RocketMQ.Persistence.Sqlite.csproj" />
     <Project Path="src/Persistence/RocketMQ.Persistence.Wal/RocketMQ.Persistence.Wal.csproj" />

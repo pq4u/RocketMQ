@@ -345,6 +345,25 @@ public sealed class GrpcTransportServerTests
             expectedStatus: null);
     }
 
+    [Theory]
+    [InlineData("orders", null)]
+    [InlineData("Orders", StatusCode.PermissionDenied)]
+    public async Task Publish_WithScopedPermission_UsesExactCaseSensitiveExchangeName(
+        string exchangeName,
+        StatusCode? expectedStatus)
+    {
+        await RunAuthorizationRpcScenarioAsync(
+            permission: string.Empty,
+            rpc: "Publish",
+            registerPresentedCertificate: true,
+            authorizationEnabled: true,
+            expectedStatus,
+            configureClient: configuration => configuration[
+                "RocketMQ:Security:Authorization:Clients:test-client:Resources:Exchanges:Publish:0"] =
+                "orders",
+            exchangeName: exchangeName);
+    }
+
     private static GrpcTransportServer CreateServer(
         IConfiguration configuration,
         IMessagePublisher? publisher = null,
@@ -459,7 +478,10 @@ public sealed class GrpcTransportServerTests
         string rpc,
         bool registerPresentedCertificate,
         bool authorizationEnabled,
-        StatusCode? expectedStatus)
+        StatusCode? expectedStatus,
+        Action<ConfigurationManager>? configureClient = null,
+        string exchangeName = "test-exchange",
+        string queueName = "test-queue")
     {
         var tempDirectory = Path.Combine(
             Path.GetTempPath(),
@@ -507,9 +529,14 @@ public sealed class GrpcTransportServerTests
             configuration[
                 "RocketMQ:Security:Authorization:Clients:test-client:CertificateSha256Fingerprints:0"] =
                 configuredCertificate.GetCertHashString(HashAlgorithmName.SHA256);
-            configuration[
-                "RocketMQ:Security:Authorization:Clients:test-client:Permissions:0"] =
-                permission;
+            if (!string.IsNullOrWhiteSpace(permission))
+            {
+                configuration[
+                    "RocketMQ:Security:Authorization:Clients:test-client:Permissions:0"] =
+                    permission;
+            }
+
+            configureClient?.Invoke(configuration);
         }
 
         var publisher = new Mock<IMessagePublisher>();
@@ -532,15 +559,22 @@ public sealed class GrpcTransportServerTests
             .Setup(value => value.LeaseNextAsync(
                 It.IsAny<string>(),
                 It.IsAny<TimeSpan>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((LeasedMessage?)null);
         queueStore
-            .Setup(value => value.AckAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Setup(value => value.AckAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         queueStore
             .Setup(value => value.NackAsync(
                 It.IsAny<Guid>(),
                 It.IsAny<bool>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var routingStore = new Mock<IRoutingStore>();
@@ -584,12 +618,22 @@ public sealed class GrpcTransportServerTests
 
             if (expectedStatus is null)
             {
-                await InvokeRpcAsync(channel.CreateCallInvoker(), rpc, timeout.Token);
+                await InvokeRpcAsync(
+                    channel.CreateCallInvoker(),
+                    rpc,
+                    exchangeName,
+                    queueName,
+                    timeout.Token);
             }
             else
             {
                 var exception = await Assert.ThrowsAsync<RpcException>(
-                    () => InvokeRpcAsync(channel.CreateCallInvoker(), rpc, timeout.Token));
+                    () => InvokeRpcAsync(
+                        channel.CreateCallInvoker(),
+                        rpc,
+                        exchangeName,
+                        queueName,
+                        timeout.Token));
                 Assert.Equal(expectedStatus, exception.StatusCode);
                 VerifyRpcWasNotDispatched(
                     rpc,
@@ -639,6 +683,8 @@ public sealed class GrpcTransportServerTests
     private static async Task InvokeRpcAsync(
         CallInvoker invoker,
         string rpc,
+        string exchangeName,
+        string queueName,
         CancellationToken cancellationToken)
     {
         switch (rpc)
@@ -650,7 +696,7 @@ public sealed class GrpcTransportServerTests
                     "Publish",
                     new PublishRequest
                     {
-                        ExchangeName = "test-exchange",
+                        ExchangeName = exchangeName,
                         PublishId = Guid.NewGuid().ToString()
                     },
                     PublishResponse.Parser,
@@ -663,7 +709,7 @@ public sealed class GrpcTransportServerTests
                     "LeaseNext",
                     new LeaseRequest
                     {
-                        QueueName = "test-queue",
+                        QueueName = queueName,
                         VisibilityTimeoutSeconds = 30
                     },
                     LeaseResponse.Parser,
@@ -674,7 +720,11 @@ public sealed class GrpcTransportServerTests
                     invoker,
                     "rocketmq.v1.Consumer",
                     "Ack",
-                    new AckRequest { LeaseId = Guid.NewGuid().ToString() },
+                    new AckRequest
+                    {
+                        LeaseId = Guid.NewGuid().ToString(),
+                        QueueName = queueName
+                    },
                     AckResponse.Parser,
                     cancellationToken);
                 break;
@@ -683,7 +733,12 @@ public sealed class GrpcTransportServerTests
                     invoker,
                     "rocketmq.v1.Consumer",
                     "Nack",
-                    new NackRequest { LeaseId = Guid.NewGuid().ToString(), Requeue = true },
+                    new NackRequest
+                    {
+                        LeaseId = Guid.NewGuid().ToString(),
+                        Requeue = true,
+                        QueueName = queueName
+                    },
                     AckResponse.Parser,
                     cancellationToken);
                 break;
@@ -694,7 +749,7 @@ public sealed class GrpcTransportServerTests
                     "DeclareExchange",
                     new DeclareExchangeRequest
                     {
-                        ExchangeName = "test-exchange",
+                        ExchangeName = exchangeName,
                         ExchangeType = "Direct"
                     },
                     AdminResponse.Parser,
@@ -705,7 +760,7 @@ public sealed class GrpcTransportServerTests
                     invoker,
                     "rocketmq.v1.Admin",
                     "DeclareQueue",
-                    new DeclareQueueRequest { QueueName = "test-queue" },
+                    new DeclareQueueRequest { QueueName = queueName },
                     AdminResponse.Parser,
                     cancellationToken);
                 break;
@@ -716,8 +771,8 @@ public sealed class GrpcTransportServerTests
                     "Bind",
                     new BindRequest
                     {
-                        ExchangeName = "test-exchange",
-                        QueueName = "test-queue",
+                        ExchangeName = exchangeName,
+                        QueueName = queueName,
                         RoutingKey = "test"
                     },
                     AdminResponse.Parser,

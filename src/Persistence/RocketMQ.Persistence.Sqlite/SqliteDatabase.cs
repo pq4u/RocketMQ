@@ -8,6 +8,7 @@ namespace RocketMQ.Persistence.Sqlite;
 /// <summary>Owns SQLite initialization and serializes all database mutations.</summary>
 public sealed class SqliteDatabase
 {
+    private const int LatestSchemaVersion = 4;
     private readonly string _connectionString;
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
     private readonly SemaphoreSlim _writerGate = new(1, 1);
@@ -127,6 +128,9 @@ public sealed class SqliteDatabase
                         version INTEGER PRIMARY KEY,
                         applied_at_utc TEXT NOT NULL
                     );
+                    """, ct);
+                await ValidateSchemaVersionAsync(connection, transaction, ct);
+                await ExecuteNonQueryAsync(connection, transaction, """
                     CREATE TABLE IF NOT EXISTS exchanges (
                         name TEXT PRIMARY KEY,
                         type INTEGER NOT NULL,
@@ -192,6 +196,23 @@ public sealed class SqliteDatabase
                     version: 2,
                     "CREATE INDEX IF NOT EXISTS ix_publications_created_at ON publications(created_at_utc);",
                     ct);
+                await ApplyMigrationAsync(
+                    connection,
+                    transaction,
+                    version: 3,
+                    "ALTER TABLE messages ADD COLUMN lease_owner_id TEXT NULL;",
+                    ct);
+                await ApplyMigrationAsync(
+                    connection,
+                    transaction,
+                    version: 4,
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_messages_queue_state_expiry
+                        ON messages(queue_name, state, lease_expires_at_utc, message_row_id);
+                    CREATE INDEX IF NOT EXISTS ix_messages_queue_message_id
+                        ON messages(queue_name, message_id);
+                    """,
+                    ct);
                 transaction.Commit();
                 _initialized = true;
             }
@@ -210,6 +231,24 @@ public sealed class SqliteDatabase
     private static async Task ConfigureConnectionAsync(SqliteConnection connection, CancellationToken ct)
     {
         await ExecuteNonQueryAsync(connection, null, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;", ct);
+    }
+
+    private static async Task ValidateSchemaVersionAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT MAX(version) FROM schema_migrations;";
+        var result = await command.ExecuteScalarAsync(ct);
+        if (result is not null
+            && result != DBNull.Value
+            && Convert.ToInt32(result, CultureInfo.InvariantCulture) > LatestSchemaVersion)
+        {
+            throw new InvalidOperationException(
+                $"The database schema is newer than supported version {LatestSchemaVersion}.");
+        }
     }
 
     private static async Task ApplyMigrationAsync(

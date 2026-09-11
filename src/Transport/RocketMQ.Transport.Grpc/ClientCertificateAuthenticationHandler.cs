@@ -46,8 +46,9 @@ internal sealed class ClientCertificateAuthenticationHandler
             new(ClaimTypes.NameIdentifier, client!.ClientId),
             new(ClaimTypes.Name, client.ClientId)
         };
-        claims.AddRange(client.Permissions.Select(
-            permission => new Claim(BrokerClaimTypes.Permission, permission.ToString())));
+        claims.AddRange(Enum.GetValues<BrokerPermission>()
+            .Where(client.HasAnyPermission)
+            .Select(permission => new Claim(BrokerClaimTypes.Permission, permission.ToString())));
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);
         return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));

@@ -1,0 +1,214 @@
+{
+  "RunId": "bench-20260911194214-a62c5c23c0eb48e39cdf82136ad6be2d",
+  "StartedAtUtc": "2026-09-11T19:42:45.3004025+00:00",
+  "CompletedAtUtc": "2026-09-11T19:57:45.3105092+00:00",
+  "Endpoint": "https://localhost:50051/",
+  "DatabasePath": "D:\\RocketMQData\\rocketmq3.db",
+  "Scenario": {
+    "Routing": "Direct",
+    "QueueCount": 1,
+    "Workers": 32,
+    "PayloadBytes": 1024,
+    "Warmup": "00:00:30",
+    "Duration": "00:15:00",
+    "DetailedTimings": true,
+    "MutualTls": false,
+    "ExchangeName": "bench-20260911194214-a62c5c23c0eb48e39cdf82136ad6be2d.exchange",
+    "QueueNames": [
+      "bench-20260911194214-a62c5c23c0eb48e39cdf82136ad6be2d.queue.1"
+    ]
+  },
+  "Counts": {
+    "Attempts": 427748,
+    "Accepted": 427716,
+    "Unroutable": 0,
+    "Failed": 32
+  },
+  "ThroughputPerSecond": 475.234663273143,
+  "Latency": {
+    "Count": 427748,
+    "MinMilliseconds": 3.3949,
+    "MeanMilliseconds": 67.32771718862509,
+    "P50Milliseconds": 9.6472,
+    "P95Milliseconds": 291.5883,
+    "P99Milliseconds": 1363.5214,
+    "MaxMilliseconds": 4371.3952
+  },
+  "DetailedTimings": {
+    "ServerTotal": {
+      "Count": 427716,
+      "MinMilliseconds": 1.146,
+      "MeanMilliseconds": 66.82600567502755,
+      "P50Milliseconds": 9.1861,
+      "P95Milliseconds": 291.1392,
+      "P99Milliseconds": 1362.6292,
+      "MaxMilliseconds": 4370.7494
+    },
+    "BatchSize": {
+      "Count": 427716,
+      "Min": 1,
+      "Mean": 16.910061816719505,
+      "P50": 17,
+      "P95": 23,
+      "P99": 27,
+      "Max": 32
+    },
+    "BatchAssembly": {
+      "Count": 427716,
+      "MinMilliseconds": 0.1033,
+      "MeanMilliseconds": 32.93140878994566,
+      "P50Milliseconds": 4.3143,
+      "P95Milliseconds": 134.6917,
+      "P99Milliseconds": 568.1167,
+      "MaxMilliseconds": 3729.9231
+    },
+    "WriterWait": {
+      "Count": 427716,
+      "MinMilliseconds": 0.0066,
+      "MeanMilliseconds": 32.8476404943935,
+      "P50Milliseconds": 4.2399,
+      "P95Milliseconds": 134.6035,
+      "P99Milliseconds": 568.0386,
+      "MaxMilliseconds": 3729.9296
+    },
+    "ConnectionOpen": {
+      "Count": 427716,
+      "MinMilliseconds": 0.015,
+      "MeanMilliseconds": 1.8344622289089163,
+      "P50Milliseconds": 0.0213,
+      "P95Milliseconds": 0.0412,
+      "P99Milliseconds": 0.0696,
+      "MaxMilliseconds": 2704.6384
+    },
+    "TransactionBegin": {
+      "Count": 427716,
+      "MinMilliseconds": 0.0089,
+      "MeanMilliseconds": 0.016461771829919775,
+      "P50Milliseconds": 0.0144,
+      "P95Milliseconds": 0.0207,
+      "P99Milliseconds": 0.0307,
+      "MaxMilliseconds": 2.6994
+    },
+    "TransactionWork": {
+      "Count": 427716,
+      "MinMilliseconds": 0.1723,
+      "MeanMilliseconds": 8.642931508056927,
+      "P50Milliseconds": 2.6655,
+      "P95Milliseconds": 4.0163,
+      "P99Milliseconds": 5.3109,
+      "MaxMilliseconds": 2654.9564
+    },
+    "TransactionCommit": {
+      "Count": 427716,
+      "MinMilliseconds": 0.7488,
+      "MeanMilliseconds": 23.389755113907274,
+      "P50Milliseconds": 2.1671,
+      "P95Milliseconds": 119.7921,
+      "P99Milliseconds": 336.2814,
+      "MaxMilliseconds": 1886.349
+    },
+    "Cleanup": {
+      "Count": 427716,
+      "MinMilliseconds": 0.0222,
+      "MeanMilliseconds": 0.3494949917702501,
+      "P50Milliseconds": 0.03,
+      "P95Milliseconds": 0.0642,
+      "P99Milliseconds": 0.1011,
+      "MaxMilliseconds": 1683.2494
+    },
+    "Fingerprint": {
+      "Count": 427716,
+      "MinMilliseconds": 0.002,
+      "MeanMilliseconds": 0.004246067484035678,
+      "P50Milliseconds": 0.0037,
+      "P95Milliseconds": 0.0058,
+      "P99Milliseconds": 0.0113,
+      "MaxMilliseconds": 2.8579
+    },
+    "IdempotencyLookup": {
+      "Count": 427716,
+      "MinMilliseconds": 0.006,
+      "MeanMilliseconds": 0.07932777427078355,
+      "P50Milliseconds": 0.0234,
+      "P95Milliseconds": 0.0424,
+      "P99Milliseconds": 0.0676,
+      "MaxMilliseconds": 2057.7854
+    },
+    "ExchangeLookup": {
+      "Count": 427716,
+      "MinMilliseconds": 0.0051,
+      "MeanMilliseconds": 0.05823627734292048,
+      "P50Milliseconds": 0.0124,
+      "P95Milliseconds": 0.0193,
+      "P99Milliseconds": 0.0277,
+      "MaxMilliseconds": 1897.777
+    },
+    "Routing": {
+      "Count": 427716,
+      "MinMilliseconds": 0.0068,
+      "MeanMilliseconds": 0.06031175499631455,
+      "P50Milliseconds": 0.0134,
+      "P95Milliseconds": 0.0203,
+      "P99Milliseconds": 0.0294,
+      "MaxMilliseconds": 1898.946
+    },
+    "PublicationInsert": {
+      "Count": 427716,
+      "MinMilliseconds": 0.0076,
+      "MeanMilliseconds": 0.13765266648898333,
+      "P50Milliseconds": 0.0165,
+      "P95Milliseconds": 0.0377,
+      "P99Milliseconds": 0.0576,
+      "MaxMilliseconds": 1893.8003
+    },
+    "Enqueue": {
+      "Count": 427716,
+      "MinMilliseconds": 0.0226,
+      "MeanMilliseconds": 0.17518004820955274,
+      "P50Milliseconds": 0.0801,
+      "P95Milliseconds": 0.136,
+      "P99Milliseconds": 0.1797,
+      "MaxMilliseconds": 2652.6948
+    },
+    "ResultRead": {
+      "Count": 427716,
+      "MinMilliseconds": 0,
+      "MeanMilliseconds": 0,
+      "P50Milliseconds": 0,
+      "P95Milliseconds": 0,
+      "P99Milliseconds": 0,
+      "MaxMilliseconds": 0
+    },
+    "ClientAndTransport": {
+      "Count": 427716,
+      "MinMilliseconds": 0.16530000000000022,
+      "MeanMilliseconds": 0.5050028818187702,
+      "P50Milliseconds": 0.4177999999999997,
+      "P95Milliseconds": 0.7040000000000006,
+      "P99Milliseconds": 2.0635000000002037,
+      "MaxMilliseconds": 284.63370000000003
+    }
+  },
+  "Errors": {
+    "Cancelled": 32
+  },
+  "StorageBefore": {
+    "DatabaseBytes": 5718450176,
+    "WalBytes": 0,
+    "ShmBytes": 0,
+    "AvailableDiskBytes": 3879161856
+  },
+  "StorageAfter": {
+    "DatabaseBytes": 5718450176,
+    "WalBytes": 0,
+    "ShmBytes": 0,
+    "AvailableDiskBytes": 2884706304
+  },
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26100",
+    "Framework": ".NET 10.0.12",
+    "ProcessArchitecture": "X64",
+    "ProcessorCount": 12,
+    "MachineName": "PABLITO"
+  }
+}

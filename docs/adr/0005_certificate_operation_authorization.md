@@ -14,7 +14,7 @@ Operation authorization is opt-in and requires mTLS. At startup the gRPC adapter
 
 Kestrel remains responsible for certificate-chain validation during the TLS handshake. An ASP.NET Core authentication handler maps the already accepted certificate to claims without rebuilding its chain. Service-level policies protect Producer, Consumer, and Admin. An unknown fingerprint is Unauthenticated; a known client without the required permission is PermissionDenied. Configuration errors fail startup, and the default is deny when authorization is enabled.
 
-The permission claim represents capability for an operation group. A future resource-authorization handler may add scoped grants and validate the request exchange or queue while retaining the service-level gate. Existing global permissions will keep their meaning. Ack and Nack will require a separate design for resolving a lease to its queue or owner.
+The permission claim represents capability for an operation group. Resource-scoped grants and lease ownership were added later by [ADR-0006](0006_resource_acl_and_lease_ownership.md), while the global permissions defined here retain their meaning.
 
 ## Consequences
 

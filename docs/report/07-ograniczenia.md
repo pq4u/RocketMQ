@@ -4,7 +4,7 @@
 
 - pojedynczy proces i jeden lokalny plik SQLite;
 - mTLS jest opcjonalne, a domyślny TLS nadal nie uwierzytelnia klienta;
-- autoryzacja rozdziela Publish, Consume i Admin, ale nie ma jeszcze ACL per exchange/kolejka;
+- ACL exchange/kolejek używa statycznych, dokładnych nazw: brak wildcardów, prefiksów, tenantów i przeładowania bez restartu;
 - brak replikacji, HA i recovery między węzłami;
 - unary polling zamiast streamingu;
 - brak automatycznego odnawiania lease;
@@ -15,7 +15,7 @@
 
 ## Priorytety rozwoju
 
-TLS i domyślny endpoint są ujednolicone, opcjonalne mTLS zapewnia uwierzytelnienie certyfikatu klienta, a allowlista może ograniczyć grupy operacji. Następne ryzyka bezpieczeństwa to podatna zależność, brak ACL zasobowych, limitów per klient, automatycznej rotacji certyfikatów i trwałego audytu; potrzebna jest również obserwowalność. Następnie można rozszerzyć operacje administracyjne i cykl lease. Klaster albo własny WAL wymaga osobnej decyzji architektonicznej i testów awaryjnych; nie powinien być dopisywany jako drobny adapter.
+TLS i domyślny endpoint są ujednolicone, opcjonalne mTLS zapewnia uwierzytelnienie certyfikatu klienta, a allowlista może ograniczyć grupy operacji i dokładne nazwy zasobów. Następne ryzyka bezpieczeństwa to podatna zależność, limity per klient, automatyczna rotacja certyfikatów, dynamiczne zarządzanie ACL i trwały audyt; potrzebna jest również obserwowalność. Następnie można rozszerzyć operacje administracyjne i cykl lease. Klaster albo własny WAL wymaga osobnej decyzji architektonicznej i testów awaryjnych; nie powinien być dopisywany jako drobny adapter.
 
 ## Otwarte decyzje
 

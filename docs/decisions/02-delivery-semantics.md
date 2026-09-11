@@ -22,6 +22,14 @@ Runner and the in-memory fixture reject Ack and Nack for an inactive or expired
 lease. Both stores enforce `QueueDefinition.MaxDeliveryCount`; zero means
 unlimited, and the gRPC Admin service declares queues with a limit of 10.
 
+When authorization is enabled, a lease records the stable authenticated
+`ClientId`. Ack and Nack atomically require the same owner, so a different
+client receives NotFound without learning whether the lease exists. Certificate
+rotation remains possible because multiple fingerprints may map to the same
+ClientId. Current clients also send the queue name in Ack/Nack; the field is
+optional, and older clients use an indexed lease-to-queue lookup before the
+same authorization and ownership check.
+
 ## Recommended default
 
 For the first durable implementation, define FIFO as enqueue order for available messages, not strict completion order. Permit multiple consumers, but never lease the same message concurrently. Use a configurable visibility timeout, reject late ack/nack calls, and dead-letter after a configured maximum delivery count. Consumers should use an idempotency key based on a stable message ID.

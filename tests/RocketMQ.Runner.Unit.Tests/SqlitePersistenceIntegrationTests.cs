@@ -141,7 +141,7 @@ public sealed class SqlitePersistenceIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Initialization_UpgradesVersion1DatabaseWithPublicationRetentionIndex()
+    public async Task Initialization_UpgradesVersion1DatabaseToLatestSchema()
     {
         var databasePath = Path.Combine(Path.GetTempPath(), $"rocketmq-v1-{Guid.NewGuid():N}.db");
         var connectionString = $"Data Source={databasePath};Mode=ReadWriteCreate;Pooling=False";
@@ -178,14 +178,139 @@ public sealed class SqlitePersistenceIntegrationTests : IAsyncLifetime
             verification.CommandText = """
                 SELECT
                     EXISTS(SELECT 1 FROM schema_migrations WHERE version=2),
+                    EXISTS(SELECT 1 FROM schema_migrations WHERE version=3),
                     EXISTS(SELECT 1 FROM sqlite_master
                            WHERE type='index' AND name='ix_publications_created_at'
-                             AND tbl_name='publications');
+                             AND tbl_name='publications'),
+                    EXISTS(SELECT 1 FROM pragma_table_info('messages')
+                           WHERE name='lease_owner_id');
                 """;
             await using var reader = await verification.ExecuteReaderAsync(TestContext.Current.CancellationToken);
             Assert.True(await reader.ReadAsync(TestContext.Current.CancellationToken));
             Assert.Equal(1, reader.GetInt32(0));
             Assert.Equal(1, reader.GetInt32(1));
+            Assert.Equal(1, reader.GetInt32(2));
+            Assert.Equal(1, reader.GetInt32(3));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            DeleteIfExists(databasePath);
+            DeleteIfExists(databasePath + "-wal");
+            DeleteIfExists(databasePath + "-shm");
+        }
+    }
+
+    [Fact]
+    public async Task Initialization_UpgradesVersion2AndPreservesUnownedActiveLease()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"rocketmq-v2-{Guid.NewGuid():N}.db");
+        var connectionString = $"Data Source={databasePath};Mode=ReadWriteCreate;Pooling=False";
+        var leaseId = Guid.NewGuid();
+        try
+        {
+            await using (var connection = new SqliteConnection(connectionString))
+            {
+                await connection.OpenAsync(TestContext.Current.CancellationToken);
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    CREATE TABLE schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        applied_at_utc TEXT NOT NULL
+                    );
+                    INSERT INTO schema_migrations(version, applied_at_utc)
+                    VALUES (1, '2026-01-01T00:00:00.0000000+00:00'),
+                           (2, '2026-01-02T00:00:00.0000000+00:00');
+                    CREATE TABLE queues (
+                        name TEXT PRIMARY KEY,
+                        durable INTEGER NOT NULL CHECK (durable = 1),
+                        max_delivery_count INTEGER NOT NULL CHECK (max_delivery_count >= 0)
+                    );
+                    INSERT INTO queues(name, durable, max_delivery_count)
+                    VALUES ('legacy-queue', 1, 10);
+                    CREATE TABLE messages (
+                        message_row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        message_id BLOB NOT NULL,
+                        queue_name TEXT NOT NULL REFERENCES queues(name) ON DELETE CASCADE,
+                        connection_id BLOB NOT NULL,
+                        correlation_id BLOB NOT NULL,
+                        payload BLOB NOT NULL,
+                        received_at_utc TEXT NOT NULL,
+                        enqueued_at_utc TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        lease_id BLOB NULL UNIQUE,
+                        lease_expires_at_utc TEXT NULL,
+                        delivery_count INTEGER NOT NULL DEFAULT 0,
+                        dead_lettered_at_utc TEXT NULL,
+                        dead_letter_reason TEXT NULL
+                    );
+                    INSERT INTO messages(
+                        message_id, queue_name, connection_id, correlation_id, payload,
+                        received_at_utc, enqueued_at_utc, state, lease_id,
+                        lease_expires_at_utc, delivery_count)
+                    VALUES (
+                        $messageId, 'legacy-queue', $connectionId, $correlationId, X'01',
+                        $now, $now, 'leased', $leaseId, $expiresAt, 1);
+                    """;
+                command.Parameters.AddWithValue("$messageId", Guid.NewGuid().ToByteArray());
+                command.Parameters.AddWithValue("$connectionId", Guid.NewGuid().ToByteArray());
+                command.Parameters.AddWithValue("$correlationId", Guid.NewGuid().ToByteArray());
+                command.Parameters.AddWithValue("$leaseId", leaseId.ToByteArray());
+                command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+                command.Parameters.AddWithValue("$expiresAt", DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"));
+                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+            }
+
+            var queueStore = new SqliteMessageQueueStore(new SqliteDatabase(connectionString));
+
+            Assert.Equal(
+                "legacy-queue",
+                await queueStore.GetActiveLeaseQueueAsync(
+                    leaseId,
+                    leaseOwnerId: null,
+                    TestContext.Current.CancellationToken));
+            await queueStore.AckAsync(
+                leaseId,
+                leaseOwnerId: null,
+                expectedQueueName: "legacy-queue",
+                TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            DeleteIfExists(databasePath);
+            DeleteIfExists(databasePath + "-wal");
+            DeleteIfExists(databasePath + "-shm");
+        }
+    }
+
+    [Fact]
+    public async Task Initialization_WithNewerSchemaVersion_FailsStartup()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"rocketmq-v99-{Guid.NewGuid():N}.db");
+        var connectionString = $"Data Source={databasePath};Mode=ReadWriteCreate;Pooling=False";
+        try
+        {
+            await using (var connection = new SqliteConnection(connectionString))
+            {
+                await connection.OpenAsync(TestContext.Current.CancellationToken);
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    CREATE TABLE schema_migrations (
+                        version INTEGER PRIMARY KEY,
+                        applied_at_utc TEXT NOT NULL
+                    );
+                    INSERT INTO schema_migrations(version, applied_at_utc)
+                    VALUES (99, '2026-01-01T00:00:00.0000000+00:00');
+                    """;
+                await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+            }
+
+            var routing = new SqliteRoutingStore(new SqliteDatabase(connectionString));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                routing.GetExchangeAsync("missing", TestContext.Current.CancellationToken));
+            Assert.Contains("newer than supported version 4", exception.Message);
         }
         finally
         {

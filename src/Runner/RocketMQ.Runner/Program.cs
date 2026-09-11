@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RocketMQ.Core.Abstractions;
+using RocketMQ.Management.Api;
 using RocketMQ.Persistence.Sqlite;
 using RocketMQ.Transport.Grpc;
 
@@ -40,7 +41,13 @@ public static class Program
                     SqliteMessagePublisher.DefaultMaxBatchDelay,
                     "RocketMQ:Persistence:PublishBatchDelay");
                 services.AddSingleton(new SqliteDatabase(connectionString));
-                services.AddSingleton<IMessageQueueStore, SqliteMessageQueueStore>();
+                services.AddSingleton<BrokerMetrics>();
+                services.AddSingleton<SqliteMessageQueueStore>();
+                services.AddSingleton<IMessageQueueStore>(serviceProvider =>
+                    new MetricsMessageQueueStore(
+                        serviceProvider.GetRequiredService<SqliteMessageQueueStore>(),
+                        serviceProvider.GetRequiredService<BrokerMetrics>()));
+                services.AddSingleton<IQueueManagementStore, SqliteQueueManagementStore>();
                 services.AddSingleton<IRoutingStore, SqliteRoutingStore>();
                 services.AddSingleton<IPersistenceStore, SqlitePersistenceStore>();
                 services.AddSingleton(serviceProvider => new SqliteMessagePublisher(
@@ -48,10 +55,13 @@ public static class Program
                     publishBatchSize,
                     publishBatchDelay));
                 services.AddSingleton<IMessagePublisher>(
-                    serviceProvider => serviceProvider.GetRequiredService<SqliteMessagePublisher>());
+                    serviceProvider => new MetricsMessagePublisher(
+                        serviceProvider.GetRequiredService<SqliteMessagePublisher>(),
+                        serviceProvider.GetRequiredService<BrokerMetrics>()));
                 services.AddSingleton<ITransportServer, GrpcTransportServer>();
                 services.AddSingleton<SqliteMaintenanceService>();
                 services.AddHostedService<ServerHostedService>();
+                services.AddHostedService<ManagementServer>();
                 services.AddHostedService<SqliteMaintenanceHostedService>();
             })
             .Build();

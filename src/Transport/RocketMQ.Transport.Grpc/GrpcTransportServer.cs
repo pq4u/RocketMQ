@@ -102,11 +102,29 @@ public sealed class GrpcTransportServer : ITransportServer
                 });
                 builder.Services.AddSingleton<IAuthorizationHandler, BrokerPermissionAuthorizationHandler>();
                 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, BrokerAuthorizationResultHandler>();
+                builder.Services.AddSingleton<IBrokerRequestAuthorizer>(serviceProvider =>
+                    new BrokerRequestAuthorizer(
+                        clientAuthorizationRegistry,
+                        serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<BrokerRequestAuthorizer>>()));
+            }
+            else
+            {
+                builder.Services.AddSingleton<IBrokerRequestAuthorizer>(
+                    DisabledBrokerRequestAuthorizer.Instance);
             }
 
             builder.Services.AddSingleton(_publisher);
             builder.Services.AddSingleton(_queueStore);
             builder.Services.AddSingleton(_routingStore);
+            builder.Services.AddTransient(serviceProvider => new ProducerService(
+                serviceProvider.GetRequiredService<IMessagePublisher>(),
+                serviceProvider.GetRequiredService<IBrokerRequestAuthorizer>()));
+            builder.Services.AddTransient(serviceProvider => new ConsumerService(
+                serviceProvider.GetRequiredService<IMessageQueueStore>(),
+                serviceProvider.GetRequiredService<IBrokerRequestAuthorizer>()));
+            builder.Services.AddTransient(serviceProvider => new AdminService(
+                serviceProvider.GetRequiredService<IRoutingStore>(),
+                serviceProvider.GetRequiredService<IBrokerRequestAuthorizer>()));
             _app = builder.Build();
             if (clientAuthorizationRegistry is not null)
             {

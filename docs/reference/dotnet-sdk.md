@@ -28,7 +28,7 @@ Dla PEM/CRT ustaw również <code>ClientCertificateKeyPath</code>. Certyfikat mu
 
 SDK nadal waliduje certyfikat serwera przy użyciu systemowego magazynu zaufania. Konfiguracja certyfikatu klienta nie wyłącza sprawdzania serwera.
 
-Jeżeli broker ma włączoną autoryzację, fingerprint tego certyfikatu musi być przypisany do <code>ClientId</code>. <code>IProducer</code> wymaga roli <code>Publish</code>, <code>IConsumer</code> roli <code>Consume</code>, a <code>IAdminClient</code> roli <code>Admin</code>. SDK nie przesyła dodatkowych tokenów ani metadanych autoryzacyjnych.
+Jeżeli broker ma włączoną autoryzację, fingerprint tego certyfikatu musi być przypisany do <code>ClientId</code>. <code>IProducer</code> wymaga globalnego Publish lub wpisu dla użytego exchange, <code>IConsumer</code> globalnego Consume lub wpisu dla kolejki, a <code>IAdminClient</code> odpowiedniego globalnego lub zasobowego Admin. SDK nie przesyła dodatkowych tokenów ani metadanych autoryzacyjnych.
 
 ## IProducer
 
@@ -55,3 +55,5 @@ DeclareQueue tworzy w bieżącym serwerze trwałą kolejkę z limitem 10 dzierż
 | <code>DeadLetter</code> | Nack z requeue=false |
 
 SDK przetwarza po jednym komunikacie, czeka 1 sekundę po pustej odpowiedzi i 2 sekundy po błędzie. <code>ConsumerOptions.VisibilityTimeout</code> ma domyślnie 30 sekund i zakres 1 sekunda–1 godzina. <code>IConsumer</code> należy zwolnić asynchronicznie.
+
+SDK przesyła nazwę aktualnej kolejki także w Ack/Nack. Publiczny interfejs nie zmienił się; jest to kompatybilne, addytywne pole protobuf przyspieszające sprawdzenie ACL. Broker wiąże lease ze stabilnym <code>ClientId</code>, więc certyfikat obrócony w obrębie tego samego klienta zachowuje możliwość potwierdzania.

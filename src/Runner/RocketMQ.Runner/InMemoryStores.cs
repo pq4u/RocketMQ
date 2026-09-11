@@ -25,6 +25,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
         public MessageState State { get; set; }
         public Guid? LeaseId { get; set; }
         public DateTimeOffset? LeaseExpiresAtUtc { get; set; }
+        public string? LeaseOwnerId { get; set; }
         public int DeliveryCount { get; set; }
         public long EnqueueSequence { get; init; }
         public DateTimeOffset? DeadLetteredAtUtc { get; set; }
@@ -34,7 +35,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
     private readonly ConcurrentDictionary<string, List<MessageEntry>> _queues = new();
     private readonly IRoutingStore? _routingStore;
     private readonly TimeProvider _timeProvider;
-    private readonly HashSet<Guid> _expiredLeaseIds = new();
+    private readonly HashSet<(Guid LeaseId, string? LeaseOwnerId)> _expiredLeases = new();
     private readonly object _lock = new();
     private long _nextEnqueueSequence;
 
@@ -70,6 +71,13 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
         string queueName,
         TimeSpan visibilityTimeout,
         CancellationToken ct)
+        => await LeaseNextAsync(queueName, visibilityTimeout, leaseOwnerId: null, ct);
+
+    public async Task<LeasedMessage?> LeaseNextAsync(
+        string queueName,
+        TimeSpan visibilityTimeout,
+        string? leaseOwnerId,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         ValidateVisibilityTimeout(visibilityTimeout);
@@ -100,7 +108,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
 
                 if (entry.State == MessageState.Leased && entry.LeaseId.HasValue)
                 {
-                    _expiredLeaseIds.Add(entry.LeaseId.Value);
+                    _expiredLeases.Add((entry.LeaseId.Value, entry.LeaseOwnerId));
                 }
 
                 if (maxDeliveryCount > 0 && entry.DeliveryCount >= maxDeliveryCount)
@@ -112,6 +120,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
                 entry.State = MessageState.Leased;
                 entry.LeaseId = Guid.NewGuid();
                 entry.LeaseExpiresAtUtc = now + visibilityTimeout;
+                entry.LeaseOwnerId = leaseOwnerId;
                 entry.DeliveryCount++;
 
                 return new LeasedMessage(
@@ -124,15 +133,20 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
         }
     }
 
-    public Task AckAsync(Guid leaseId, CancellationToken ct)
+    public Task<string> GetActiveLeaseQueueAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
         lock (_lock)
         {
-            foreach (var queue in _queues.Values)
+            foreach (var (queueName, queue) in _queues)
             {
-                var entry = queue.FirstOrDefault(candidate => candidate.LeaseId == leaseId);
+                var entry = queue.FirstOrDefault(candidate =>
+                    candidate.LeaseId == leaseId &&
+                    StringComparer.Ordinal.Equals(candidate.LeaseOwnerId, leaseOwnerId));
                 if (entry == null)
                 {
                     continue;
@@ -140,7 +154,50 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
 
                 if (!HasActiveLease(entry, _timeProvider.GetUtcNow()))
                 {
-                    _expiredLeaseIds.Add(leaseId);
+                    _expiredLeases.Add((leaseId, leaseOwnerId));
+                    throw new InvalidOperationException("Lease expired");
+                }
+
+                return Task.FromResult(queueName);
+            }
+
+            throw new InvalidOperationException(
+                _expiredLeases.Contains((leaseId, leaseOwnerId)) ? "Lease expired" : "Lease not found");
+        }
+    }
+
+    public Task AckAsync(Guid leaseId, CancellationToken ct)
+        => AckAsync(leaseId, leaseOwnerId: null, expectedQueueName: null, ct);
+
+    public Task AckAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        lock (_lock)
+        {
+            foreach (var (queueName, queue) in _queues)
+            {
+                if (expectedQueueName is not null
+                    && !StringComparer.Ordinal.Equals(queueName, expectedQueueName))
+                {
+                    continue;
+                }
+
+                var entry = queue.FirstOrDefault(candidate =>
+                    candidate.LeaseId == leaseId &&
+                    StringComparer.Ordinal.Equals(candidate.LeaseOwnerId, leaseOwnerId));
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                if (!HasActiveLease(entry, _timeProvider.GetUtcNow()))
+                {
+                    _expiredLeases.Add((leaseId, leaseOwnerId));
                     throw new InvalidOperationException("Lease expired");
                 }
 
@@ -149,19 +206,35 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
             }
 
             throw new InvalidOperationException(
-                _expiredLeaseIds.Contains(leaseId) ? "Lease expired" : "Lease not found");
+                _expiredLeases.Contains((leaseId, leaseOwnerId)) ? "Lease expired" : "Lease not found");
         }
     }
 
     public Task NackAsync(Guid leaseId, bool requeue, CancellationToken ct)
+        => NackAsync(leaseId, requeue, leaseOwnerId: null, expectedQueueName: null, ct);
+
+    public Task NackAsync(
+        Guid leaseId,
+        bool requeue,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
         lock (_lock)
         {
-            foreach (var queue in _queues.Values)
+            foreach (var (queueName, queue) in _queues)
             {
-                var entry = queue.FirstOrDefault(candidate => candidate.LeaseId == leaseId);
+                if (expectedQueueName is not null
+                    && !StringComparer.Ordinal.Equals(queueName, expectedQueueName))
+                {
+                    continue;
+                }
+
+                var entry = queue.FirstOrDefault(candidate =>
+                    candidate.LeaseId == leaseId &&
+                    StringComparer.Ordinal.Equals(candidate.LeaseOwnerId, leaseOwnerId));
                 if (entry == null)
                 {
                     continue;
@@ -169,7 +242,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
 
                 if (!HasActiveLease(entry, _timeProvider.GetUtcNow()))
                 {
-                    _expiredLeaseIds.Add(leaseId);
+                    _expiredLeases.Add((leaseId, leaseOwnerId));
                     throw new InvalidOperationException("Lease expired");
                 }
 
@@ -178,6 +251,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
                     entry.State = MessageState.Available;
                     entry.LeaseId = null;
                     entry.LeaseExpiresAtUtc = null;
+                    entry.LeaseOwnerId = null;
                 }
                 else
                 {
@@ -188,7 +262,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
             }
 
             throw new InvalidOperationException(
-                _expiredLeaseIds.Contains(leaseId) ? "Lease expired" : "Lease not found");
+                _expiredLeases.Contains((leaseId, leaseOwnerId)) ? "Lease expired" : "Lease not found");
         }
     }
 
@@ -251,6 +325,7 @@ public class InMemoryMessageQueueStore : IMessageQueueStore
         entry.State = MessageState.DeadLettered;
         entry.LeaseId = null;
         entry.LeaseExpiresAtUtc = null;
+        entry.LeaseOwnerId = null;
         entry.DeadLetteredAtUtc = deadLetteredAtUtc;
         entry.DeadLetterReason = reason;
     }

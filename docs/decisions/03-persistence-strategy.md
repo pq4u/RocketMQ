@@ -37,10 +37,10 @@ These are documented gaps, not implicit changes to this confirmed decision.
 | Operation | Commit unit and recovery result |
 | --- | --- |
 | Publish and route | Resolve bindings and insert one message row for every destination queue in a single transaction. A crash before commit publishes to no queue; after commit the message is present in every resolved queue. A publish whose client response was lost is an uncertain outcome and the producer must retry with the same stable message ID once that API field exists. |
-| Lease | Atomically select the oldest available or expired-lease row for the queue, assign a new lease ID and expiry, and increment `delivery_count`. A crash before commit leaves it available; after commit it remains leased until expiry, then becomes eligible for redelivery. |
-| Ack | Delete the row only when its lease is active and unexpired. A crash before commit leaves the message leased; after commit it is permanently gone. If the broker commits but the client loses the response, a retry may report an invalid lease; that result is safe because the message was already acknowledged. |
+| Lease | Atomically select the oldest available or expired-lease row for the queue, assign a new lease ID, expiry and optional stable owner ClientId, and increment `delivery_count`. A crash before commit leaves it available; after commit it remains leased until expiry, then becomes eligible for redelivery. |
+| Ack | Delete the row only when its lease is active, unexpired and matches the optional owner and expected queue. A crash before commit leaves the message leased; after commit it is permanently gone. If the broker commits but the client loses the response, a retry may report an invalid lease; that result is safe because the message was already acknowledged. |
 | Nack with requeue | Clear lease fields in one transaction, preserving `delivery_count`. A crash before commit preserves the lease; after commit the message is immediately available. |
-| Nack without requeue or max-delivery handling | Set `state=dead_lettered`, clear lease fields, and set `dead_lettered_at_utc` and a reason in one transaction. Use `max-delivery-count-exceeded` for automatic dead-lettering and `rejected` for explicit `NackAsync(..., requeue: false)`. |
+| Nack without requeue or max-delivery handling | Set `state=dead_lettered`, clear lease fields, and set `dead_lettered_at_utc` and a reason in one transaction. Use `max-delivery-count-exceeded` for automatic dead-lettering and `consumer-rejected` for explicit `NackAsync(..., requeue: false)`. |
 | Startup | Run migrations before accepting traffic. SQLite WAL recovery is performed by SQLite when the database opens; no bespoke replay is needed. There is no startup sweep of leases: `LeaseNextAsync` reclaims expired leases atomically. |
 
 ## Implementation specification
@@ -54,7 +54,7 @@ The first schema must contain:
 - `exchanges(name TEXT PRIMARY KEY, type TEXT NOT NULL, durable INTEGER NOT NULL)`;
 - `queues(name TEXT PRIMARY KEY, durable INTEGER NOT NULL CHECK (durable = 1), max_delivery_count INTEGER NOT NULL CHECK (max_delivery_count >= 0))`;
 - `bindings(exchange_name, queue_name, routing_key, PRIMARY KEY (exchange_name, queue_name, routing_key), FOREIGN KEY ... ON DELETE CASCADE)`;
-- `messages(message_id BLOB PRIMARY KEY, queue_name TEXT NOT NULL REFERENCES queues(name) ON DELETE CASCADE, connection_id BLOB NOT NULL, correlation_id BLOB NOT NULL, payload BLOB NOT NULL, received_at_utc TEXT NOT NULL, enqueued_at_utc TEXT NOT NULL, enqueue_sequence INTEGER NOT NULL UNIQUE, state TEXT NOT NULL, lease_id BLOB NULL UNIQUE, lease_expires_at_utc TEXT NULL, delivery_count INTEGER NOT NULL DEFAULT 0, dead_lettered_at_utc TEXT NULL, dead_letter_reason TEXT NULL)`;
+- `messages(message_id BLOB PRIMARY KEY, queue_name TEXT NOT NULL REFERENCES queues(name) ON DELETE CASCADE, connection_id BLOB NOT NULL, correlation_id BLOB NOT NULL, payload BLOB NOT NULL, received_at_utc TEXT NOT NULL, enqueued_at_utc TEXT NOT NULL, enqueue_sequence INTEGER NOT NULL UNIQUE, state TEXT NOT NULL, lease_id BLOB NULL UNIQUE, lease_expires_at_utc TEXT NULL, lease_owner_id TEXT NULL, delivery_count INTEGER NOT NULL DEFAULT 0, dead_lettered_at_utc TEXT NULL, dead_letter_reason TEXT NULL)`;
 - `persistence_log(sequence INTEGER PRIMARY KEY, connection_id BLOB NOT NULL, correlation_id BLOB NOT NULL, payload BLOB NOT NULL, received_at_utc TEXT NOT NULL)` for `IPersistenceStore` replay; and
 - `schema_migrations` as described above.
 
@@ -66,7 +66,7 @@ Use ISO-8601 UTC text with a fixed round-trip format for timestamps and a consis
 - Begin writes with `BEGIN IMMEDIATE`; keep transactions free of network calls and application callbacks.
 - `LeaseNextAsync` must select and update in the same transaction. Its candidate predicate is `state = 'available' OR (state = 'leased' AND lease_expires_at_utc <= now)`, ordered by `enqueued_at_utc, enqueue_sequence`.
 - Before assigning a lease, if the resulting delivery count would exceed the queue's non-zero `max_delivery_count`, transition the row to `dead_lettered` in that transaction and continue looking for the next candidate. Never return that row to a consumer.
-- `AckAsync` and `NackAsync` affect exactly one row matching `lease_id`, `state = 'leased'`, and `lease_expires_at_utc > now`; otherwise they throw `InvalidOperationException`, as required by the port.
+- `AckAsync` and `NackAsync` affect exactly one row matching `lease_id`, `state = 'leased'`, `lease_expires_at_utc > now`, the optional owner ClientId and optional expected queue; otherwise they throw `InvalidOperationException`, as required by the port.
 - The synchronous publish path cannot compose `IMessageRouter`, `IRoutingStore`, and `IMessageQueueStore` as independent transactions. Add an internal SQLite broker operation that resolves routing and enqueues every destination using the same connection and transaction. The public Core ports remain adapter-neutral; this is an adapter-internal unit of work used by the runner's durable publish service.
 
 ### Required verification

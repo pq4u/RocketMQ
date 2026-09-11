@@ -10,14 +10,31 @@ namespace RocketMQ.Transport.Grpc.Services;
 public sealed class ProducerService : Producer.ProducerBase
 {
     private readonly IMessagePublisher _publisher;
+    private readonly IBrokerRequestAuthorizer _authorizer;
 
-    public ProducerService(IMessagePublisher publisher) => _publisher = publisher;
+    public ProducerService(IMessagePublisher publisher)
+        : this(publisher, DisabledBrokerRequestAuthorizer.Instance)
+    {
+    }
+
+    internal ProducerService(
+        IMessagePublisher publisher,
+        IBrokerRequestAuthorizer authorizer)
+    {
+        _publisher = publisher;
+        _authorizer = authorizer;
+    }
 
     public override async Task<PublishResponse> Publish(PublishRequest request, ServerCallContext context)
     {
         if (string.IsNullOrWhiteSpace(request.ExchangeName)) throw InvalidArgument("Exchange name is required.");
         if (!string.IsNullOrWhiteSpace(request.CorrelationId) && !Guid.TryParse(request.CorrelationId, out _)) throw InvalidArgument("Correlation ID must be a valid GUID.");
         if (!string.IsNullOrWhiteSpace(request.PublishId) && !Guid.TryParse(request.PublishId, out _)) throw InvalidArgument("Publish ID must be a valid GUID.");
+        _authorizer.Demand(
+            context,
+            BrokerPermission.Publish,
+            BrokerResourceKind.Exchange,
+            request.ExchangeName);
 
         var correlationId = string.IsNullOrWhiteSpace(request.CorrelationId) ? Guid.NewGuid() : Guid.Parse(request.CorrelationId);
         var publishId = string.IsNullOrWhiteSpace(request.PublishId) ? Guid.NewGuid() : Guid.Parse(request.PublishId);

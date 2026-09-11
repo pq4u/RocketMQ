@@ -64,11 +64,13 @@ message LeaseResponse {
 
 message AckRequest {
   string lease_id = 1;
+  string queue_name = 2;
 }
 
 message NackRequest {
   string lease_id = 1;
   bool requeue = 2;
+  string queue_name = 3;
 }
 
 message AckResponse {}

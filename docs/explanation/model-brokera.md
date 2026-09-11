@@ -30,4 +30,4 @@ Szczegóły: [publikacja i SQLite](publikacja-i-sqlite.md), [semantyka dostarcza
 
 ## Świadome ograniczenia
 
-Obecna implementacja jest prototypem uruchamianym jako pojedynczy proces. Transport gRPC domyślnie używa TLS, ale nie ma uwierzytelniania, autoryzacji, replikacji, klastra ani administracyjnego API do przeglądania dead letters. Adapter WAL jest szkieletem i nie nadaje się do uruchomienia.
+Obecna implementacja jest prototypem uruchamianym jako pojedynczy proces. Transport gRPC domyślnie używa TLS; opcjonalne mTLS oraz allowlista zapewniają uwierzytelnianie i dokładne ACL exchange/kolejek. Nadal nie ma replikacji, klastra, limitów per klient, trwałego audytu ani administracyjnego API do przeglądania dead letters. Adapter WAL jest szkieletem i nie nadaje się do uruchomienia.

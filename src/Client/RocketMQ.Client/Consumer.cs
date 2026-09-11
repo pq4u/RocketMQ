@@ -98,14 +98,19 @@ public class Consumer : IConsumer
                 if (result == ConsumeResult.Success)
                 {
                     await _client.AckAsync(
-                        new AckRequest { LeaseId = response.LeaseId },
+                        new AckRequest { LeaseId = response.LeaseId, QueueName = queueName },
                         cancellationToken: ct);
                 }
                 else
                 {
                     var requeue = result == ConsumeResult.Requeue;
                     await _client.NackAsync(
-                        new NackRequest { LeaseId = response.LeaseId, Requeue = requeue },
+                        new NackRequest
+                        {
+                            LeaseId = response.LeaseId,
+                            Requeue = requeue,
+                            QueueName = queueName
+                        },
                         cancellationToken: ct);
                 }
             }

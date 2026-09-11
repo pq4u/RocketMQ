@@ -13,7 +13,7 @@ in separate projects under `src/Persistence/` and `src/Transport/`.
 
 | Port | Purpose | Semantics |
 |------|---------|----------|
-| `IMessageQueueStore` | Queue persistence with lease/ack/nack | RabbitMQ-style competing consumers with visibility timeout (see ADR-0001). Operations target named queues (see ADR-0002). |
+| `IMessageQueueStore` | Queue persistence with lease/ack/nack | RabbitMQ-style competing consumers with visibility timeout (see ADR-0001). Operations target named queues (see ADR-0002); owner-aware overloads bind leases to the stable authenticated ClientId (see ADR-0006). |
 | `IPersistenceStore` | Append-only durable log | Kafka-style offset-based replay (retained for future event-sourcing use) |
 | `IMessagePublisher` | Durable routed publication | Active gRPC publish path; completes after the SQLite transaction commits. |
 | `IMessageChannel<T>` | Legacy/general channel abstraction | Not used on the active Runner publish path. The production bounded channel is internal to `SqliteMessagePublisher`. |
@@ -104,3 +104,5 @@ Architecture Decision Records live in `docs/adr/`.
 - [ADR-0004](docs/adr/0004_client_sdk_architecture.md) — .NET client SDK
 - [ADR-0005](docs/adr/0005_certificate_operation_authorization.md) —
   certificate identity and operation-level authorization
+- [ADR-0006](docs/adr/0006_resource_acl_and_lease_ownership.md) —
+  exact-name exchange/queue ACLs and authenticated lease ownership

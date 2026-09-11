@@ -66,4 +66,26 @@ public sealed class ProducerServiceTests
         Assert.NotNull(response.Diagnostics);
         Assert.True(response.Diagnostics.ServerTotalMs >= 0);
     }
+
+    [Fact]
+    public async Task Publish_WhenExchangeAclDenies_DoesNotCallPublisher()
+    {
+        var authorizer = new TestBrokerRequestAuthorizer
+        {
+            OnDemand = (_, _, _) => throw new RpcException(new Status(
+                StatusCode.PermissionDenied,
+                "Access to the requested resource is denied."))
+        };
+        var service = new ProducerService(_publisher.Object, authorizer);
+
+        var exception = await Assert.ThrowsAsync<RpcException>(() => service.Publish(
+            new PublishRequest { ExchangeName = "other-exchange" },
+            new TestServerCallContext()));
+
+        Assert.Equal(StatusCode.PermissionDenied, exception.StatusCode);
+        _publisher.Verify(x => x.PublishAsync(
+            It.IsAny<Guid>(),
+            It.IsAny<Envelope>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

@@ -50,7 +50,7 @@ public sealed class ClientAuthorizationRegistryTests
     [InlineData("1234", "Publish", "invalid SHA-256")]
     [InlineData("", "Publish", "at least one CertificateSha256Fingerprints")]
     [InlineData(FingerprintA, "Delete", "unknown permission")]
-    [InlineData(FingerprintA, "", "at least one Permissions")]
+    [InlineData(FingerprintA, "", "at least one global or resource permission")]
     public void Load_WithInvalidClientEntry_RejectsConfiguration(
         string fingerprint,
         string permission,
@@ -116,9 +116,80 @@ public sealed class ClientAuthorizationRegistryTests
         Assert.NotNull(client);
         Assert.Equal("test-client", client.ClientId);
         Assert.Contains(BrokerPermission.Publish, client.Permissions);
+        Assert.True(client.CanAccess(
+            BrokerPermission.Publish,
+            BrokerResourceKind.Exchange,
+            "any-exchange"));
         Assert.Equal(
             secondCertificate.GetCertHashString(HashAlgorithmName.SHA256),
             fingerprint);
+    }
+
+    [Fact]
+    public void Load_WithOnlyScopedPermissions_AcceptsExactCaseSensitiveResources()
+    {
+        using var certificate = CreateCertificate("CN=scoped");
+        var configuration = CreateClientConfiguration(
+            [certificate.GetCertHashString(HashAlgorithmName.SHA256)],
+            []);
+        configuration[
+            "RocketMQ:Security:Authorization:Clients:test-client:Resources:Exchanges:Publish:0"] =
+            "orders";
+        configuration[
+            "RocketMQ:Security:Authorization:Clients:test-client:Resources:Queues:Consume:0"] =
+            "orders-workers";
+        var registry = ClientAuthorizationRegistry.Load(configuration);
+
+        Assert.True(registry.TryResolve(certificate, out var client, out _));
+        Assert.NotNull(client);
+        Assert.True(client.HasAnyPermission(BrokerPermission.Publish));
+        Assert.True(client.HasAnyPermission(BrokerPermission.Consume));
+        Assert.True(client.CanAccess(
+            BrokerPermission.Publish,
+            BrokerResourceKind.Exchange,
+            "orders"));
+        Assert.False(client.CanAccess(
+            BrokerPermission.Publish,
+            BrokerResourceKind.Exchange,
+            "Orders"));
+        Assert.False(client.CanAccess(
+            BrokerPermission.Consume,
+            BrokerResourceKind.Queue,
+            "other-queue"));
+    }
+
+    [Theory]
+    [InlineData("Resources:Topics:Publish:0", "orders", "unknown authorization section")]
+    [InlineData("Resources:Exchanges:Consume:0", "orders", "unknown authorization section")]
+    [InlineData("Resources:Queues:Consume:0", " orders ", "whitespace-padded resource")]
+    public void Load_WithInvalidResourceConfiguration_RejectsConfiguration(
+        string relativeKey,
+        string value,
+        string expectedMessage)
+    {
+        var configuration = CreateClientConfiguration([FingerprintA], []);
+        configuration[
+            $"RocketMQ:Security:Authorization:Clients:test-client:{relativeKey}"] = value;
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => ClientAuthorizationRegistry.Load(configuration));
+
+        Assert.Contains(expectedMessage, exception.Message);
+    }
+
+    [Fact]
+    public void Load_WithDuplicateScopedResource_RejectsConfiguration()
+    {
+        var configuration = CreateClientConfiguration([FingerprintA], []);
+        const string prefix =
+            "RocketMQ:Security:Authorization:Clients:test-client:Resources:Queues:Consume";
+        configuration[$"{prefix}:0"] = "orders-workers";
+        configuration[$"{prefix}:1"] = "orders-workers";
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => ClientAuthorizationRegistry.Load(configuration));
+
+        Assert.Contains("more than once", exception.Message);
     }
 
     private static ConfigurationManager CreateClientConfiguration(

@@ -41,6 +41,7 @@ Reference odzwierciedla bieżące kontrakty kodu. Użyj go do sprawdzania parame
 
 - [Konfiguracja brokera](reference/konfiguracja.md).
 - [API gRPC](reference/grpc-api.md).
+- [Management REST API i panel](reference/management-api.md).
 - [SDK .NET](reference/dotnet-sdk.md).
 - [Porty i modele Core](reference/core-api.md).
 - [Schemat SQLite](reference/sqlite-schema.md).

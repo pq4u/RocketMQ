@@ -12,7 +12,7 @@ Rejestr łączy twierdzenia raportu z artefaktem możliwym do sprawdzenia. Ście
 | EVID-006 | Kanał publishera jest bounded i ma jednego readera | [SqliteMessagePublisher.cs](../../src/Persistence/RocketMQ.Persistence.Sqlite/SqliteMessagePublisher.cs) |
 | EVID-007 | Publikacja jest zapisywana transakcyjnie i ma fingerprint | [SqliteMessagePublisher.cs](../../src/Persistence/RocketMQ.Persistence.Sqlite/SqliteMessagePublisher.cs) |
 | EVID-008 | Baza używa WAL, FULL, FK i busy timeout | [SqliteDatabase.cs](../../src/Persistence/RocketMQ.Persistence.Sqlite/SqliteDatabase.cs) |
-| EVID-009 | Schemat ma wersje migracji 1 i 2 | [SqliteDatabase.cs](../../src/Persistence/RocketMQ.Persistence.Sqlite/SqliteDatabase.cs) |
+| EVID-009 | Schemat ma wersje migracji 1, 2 i 3 | [SqliteDatabase.cs](../../src/Persistence/RocketMQ.Persistence.Sqlite/SqliteDatabase.cs) |
 | EVID-010 | Kontrakt sieciowy ma trzy usługi unary | [rocketmq.proto](../../src/Transport/RocketMQ.Transport.Grpc/Protos/rocketmq.proto) |
 | EVID-011 | SDK konsumenta mapuje wyniki na Ack i Nack | [Consumer.cs](../../src/Client/RocketMQ.Client/Consumer.cs) |
 | EVID-012 | SDK producenta retryuje ResourceExhausted | [Producer.cs](../../src/Client/RocketMQ.Client/Producer.cs) |
@@ -22,6 +22,7 @@ Rejestr łączy twierdzenia raportu z artefaktem możliwym do sprawdzenia. Ście
 | EVID-016 | Runner domyślnie używa TLS, negocjuje HTTP/2 i blokuje HTTP poza loopback | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
 | EVID-017 | Opcjonalne mTLS wymaga certyfikatu klienta z prywatnego CA i odrzuca brak certyfikatu, obce CA, wygaśnięcie oraz zły EKU | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
 | EVID-018 | Opcjonalna autoryzacja mapuje fingerprint certyfikatu na klienta i niezależnie chroni Producer, Consumer oraz Admin | [testy transportu](../../tests/RocketMQ.Transport.Grpc.Tests/GrpcTransportServerTests.cs) |
+| EVID-019 | Autoryzacja obsługuje dokładne ACL exchange/kolejek, a lease jest związany ze stabilnym ClientId | [testy kontraktowe](../../tests/RocketMQ.Contract.Tests/MessageQueueStoreContractTests.cs) i [testy gRPC](../../tests/RocketMQ.Transport.Grpc.Tests/) |
 
 ## Źródła zewnętrzne
 

@@ -9,6 +9,12 @@ internal enum BrokerPermission
     Admin
 }
 
+internal enum BrokerResourceKind
+{
+    Exchange,
+    Queue
+}
+
 internal static class BrokerAuthenticationDefaults
 {
     public const string Scheme = "RocketMQ.ClientCertificate";

@@ -21,7 +21,17 @@ public sealed class SqliteMessageQueueStore : IMessageQueueStore
             return messageId;
         }, ct);
 
-    public Task<LeasedMessage?> LeaseNextAsync(string queueName, TimeSpan visibilityTimeout, CancellationToken ct)
+    public Task<LeasedMessage?> LeaseNextAsync(
+        string queueName,
+        TimeSpan visibilityTimeout,
+        CancellationToken ct)
+        => LeaseNextAsync(queueName, visibilityTimeout, leaseOwnerId: null, ct);
+
+    public Task<LeasedMessage?> LeaseNextAsync(
+        string queueName,
+        TimeSpan visibilityTimeout,
+        string? leaseOwnerId,
+        CancellationToken ct)
     {
         if (visibilityTimeout <= TimeSpan.Zero || visibilityTimeout == Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(visibilityTimeout), "Visibility timeout must be greater than zero and finite.");
@@ -63,6 +73,7 @@ public sealed class SqliteMessageQueueStore : IMessageQueueStore
                 {
                     await SqliteDatabase.ExecuteNonQueryAsync(connection, transaction, """
                         UPDATE messages SET state='dead_lettered', lease_id=NULL, lease_expires_at_utc=NULL,
+                        lease_owner_id=NULL,
                         dead_lettered_at_utc=$now, dead_letter_reason='max-delivery-count-exceeded'
                         WHERE message_row_id=$id;
                         """, token, ("$now", SqliteDatabase.UtcText(now)), ("$id", rowId));
@@ -73,36 +84,145 @@ public sealed class SqliteMessageQueueStore : IMessageQueueStore
                 var expiresAt = now.Add(visibilityTimeout);
                 await SqliteDatabase.ExecuteNonQueryAsync(connection, transaction, """
                     UPDATE messages SET state='leased', lease_id=$leaseId, lease_expires_at_utc=$expiresAt,
-                    delivery_count=delivery_count+1 WHERE message_row_id=$id;
+                    lease_owner_id=$leaseOwnerId, delivery_count=delivery_count+1 WHERE message_row_id=$id;
                     """, token,
                     ("$leaseId", SqliteDatabase.GuidBytes(leaseId)),
                     ("$expiresAt", SqliteDatabase.UtcText(expiresAt)),
+                    ("$leaseOwnerId", leaseOwnerId),
                     ("$id", rowId));
                 return new LeasedMessage(messageId, leaseId, message, deliveryCount + 1, expiresAt);
             }
         }, ct);
     }
 
-    public Task AckAsync(Guid leaseId, CancellationToken ct) => CompleteLeaseAsync(leaseId, requeue: null, ct);
-    public Task NackAsync(Guid leaseId, bool requeue, CancellationToken ct) => CompleteLeaseAsync(leaseId, requeue, ct);
+    public Task<string> GetActiveLeaseQueueAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        CancellationToken ct)
+        => _database.ReadAsync(async (connection, token) =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT queue_name, lease_expires_at_utc
+                FROM messages
+                WHERE lease_id=$leaseId
+                  AND state='leased'
+                  AND lease_owner_id IS $leaseOwnerId;
+                """;
+            command.Parameters.AddWithValue("$leaseId", SqliteDatabase.GuidBytes(leaseId));
+            command.Parameters.AddWithValue("$leaseOwnerId", (object?)leaseOwnerId ?? DBNull.Value);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            if (!await reader.ReadAsync(token))
+            {
+                throw new InvalidOperationException("Lease not found.");
+            }
 
-    private Task CompleteLeaseAsync(Guid leaseId, bool? requeue, CancellationToken ct) => _database.WriteAsync(async (connection, transaction, token) =>
+            var queueName = reader.GetString(0);
+            var expiresAt = SqliteDatabase.ReadUtc(reader, 1);
+            if (expiresAt <= DateTimeOffset.UtcNow)
+            {
+                throw new InvalidOperationException("Lease expired.");
+            }
+
+            return queueName;
+        }, ct);
+
+    public Task AckAsync(Guid leaseId, CancellationToken ct)
+        => AckAsync(leaseId, leaseOwnerId: null, expectedQueueName: null, ct);
+
+    public Task AckAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct)
+        => CompleteLeaseAsync(leaseId, requeue: null, leaseOwnerId, expectedQueueName, ct);
+
+    public Task NackAsync(Guid leaseId, bool requeue, CancellationToken ct)
+        => NackAsync(leaseId, requeue, leaseOwnerId: null, expectedQueueName: null, ct);
+
+    public Task NackAsync(
+        Guid leaseId,
+        bool requeue,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct)
+        => CompleteLeaseAsync(leaseId, requeue, leaseOwnerId, expectedQueueName, ct);
+
+    private Task CompleteLeaseAsync(
+        Guid leaseId,
+        bool? requeue,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct) => _database.WriteAsync(async (connection, transaction, token) =>
     {
-        var now = SqliteDatabase.UtcNowText();
+        var now = DateTimeOffset.UtcNow;
+        var queuePredicate = expectedQueueName is null ? string.Empty : " AND queue_name=$queueName";
         var sql = requeue switch
         {
-            null => "DELETE FROM messages WHERE lease_id=$leaseId AND state='leased' AND lease_expires_at_utc > $now;",
-            true => "UPDATE messages SET state='available', lease_id=NULL, lease_expires_at_utc=NULL WHERE lease_id=$leaseId AND state='leased' AND lease_expires_at_utc > $now;",
-            false => "UPDATE messages SET state='dead_lettered', lease_id=NULL, lease_expires_at_utc=NULL, dead_lettered_at_utc=$now, dead_letter_reason='rejected' WHERE lease_id=$leaseId AND state='leased' AND lease_expires_at_utc > $now;"
+            null => "DELETE FROM messages WHERE lease_id=$leaseId AND state='leased' AND lease_expires_at_utc > $now AND lease_owner_id IS $leaseOwnerId" + queuePredicate + ";",
+            true => "UPDATE messages SET state='available', lease_id=NULL, lease_expires_at_utc=NULL, lease_owner_id=NULL WHERE lease_id=$leaseId AND state='leased' AND lease_expires_at_utc > $now AND lease_owner_id IS $leaseOwnerId" + queuePredicate + ";",
+            false => "UPDATE messages SET state='dead_lettered', lease_id=NULL, lease_expires_at_utc=NULL, lease_owner_id=NULL, dead_lettered_at_utc=$now, dead_letter_reason='consumer-rejected' WHERE lease_id=$leaseId AND state='leased' AND lease_expires_at_utc > $now AND lease_owner_id IS $leaseOwnerId" + queuePredicate + ";"
         };
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = sql;
         command.Parameters.AddWithValue("$leaseId", SqliteDatabase.GuidBytes(leaseId));
-        command.Parameters.AddWithValue("$now", now);
-        if (await command.ExecuteNonQueryAsync(token) != 1) throw new InvalidOperationException("Lease not found or expired.");
+        command.Parameters.AddWithValue("$now", SqliteDatabase.UtcText(now));
+        command.Parameters.AddWithValue("$leaseOwnerId", (object?)leaseOwnerId ?? DBNull.Value);
+        if (expectedQueueName is not null)
+        {
+            command.Parameters.AddWithValue("$queueName", expectedQueueName);
+        }
+
+        if (await command.ExecuteNonQueryAsync(token) != 1)
+        {
+            await ThrowLeaseFailureAsync(
+                connection,
+                transaction,
+                leaseId,
+                leaseOwnerId,
+                expectedQueueName,
+                now,
+                token);
+        }
+
         return 0;
     }, ct);
+
+    private static async Task ThrowLeaseFailureAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        Microsoft.Data.Sqlite.SqliteTransaction transaction,
+        Guid leaseId,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT lease_expires_at_utc
+            FROM messages
+            WHERE lease_id=$leaseId
+              AND state='leased'
+              AND lease_owner_id IS $leaseOwnerId
+              AND ($queueName IS NULL OR queue_name=$queueName);
+            """;
+        command.Parameters.AddWithValue("$leaseId", SqliteDatabase.GuidBytes(leaseId));
+        command.Parameters.AddWithValue("$leaseOwnerId", (object?)leaseOwnerId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$queueName", (object?)expectedQueueName ?? DBNull.Value);
+        var expiresAtValue = await command.ExecuteScalarAsync(ct);
+        if (expiresAtValue is string expiresAtText
+            && DateTimeOffset.Parse(
+                expiresAtText,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind) <= now)
+        {
+            throw new InvalidOperationException("Lease expired.");
+        }
+
+        throw new InvalidOperationException("Lease not found.");
+    }
 
     public IAsyncEnumerable<DeadLetteredMessage> BrowseDeadLettersAsync(string queueName, CancellationToken ct)
         => BrowseDeadLettersCoreAsync(queueName, ct);

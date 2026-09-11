@@ -153,6 +153,79 @@ public abstract class MessageQueueStoreContractTests : IAsyncLifetime
             () => _store.AckAsync(Guid.NewGuid(), CancellationToken.None));
     }
 
+    [Fact]
+    public async Task OwnedLease_CanOnlyBeResolvedAndAcknowledgedByItsOwner()
+    {
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(
+            TestQueue,
+            TimeSpan.FromMinutes(5),
+            "client-a",
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _store.GetActiveLeaseQueueAsync(
+                leased!.LeaseId,
+                "client-b",
+                CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _store.AckAsync(
+                leased!.LeaseId,
+                "client-b",
+                TestQueue,
+                CancellationToken.None));
+
+        Assert.Equal(
+            TestQueue,
+            await _store.GetActiveLeaseQueueAsync(
+                leased!.LeaseId,
+                "client-a",
+                CancellationToken.None));
+        await _store.AckAsync(
+            leased.LeaseId,
+            "client-a",
+            TestQueue,
+            CancellationToken.None);
+        Assert.Null(await _store.LeaseNextAsync(
+            TestQueue,
+            TimeSpan.FromMinutes(5),
+            "client-a",
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task OwnedLease_ExpectedQueueMustMatchWithoutConsumingTheLease()
+    {
+        await _store.EnqueueAsync(TestQueue, NewMessage(), CancellationToken.None);
+        var leased = await _store.LeaseNextAsync(
+            TestQueue,
+            TimeSpan.FromMinutes(5),
+            "client-a",
+            CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _store.NackAsync(
+                leased!.LeaseId,
+                requeue: true,
+                "client-a",
+                "different-queue",
+                CancellationToken.None));
+
+        await _store.NackAsync(
+            leased!.LeaseId,
+            requeue: true,
+            "client-a",
+            TestQueue,
+            CancellationToken.None);
+        var redelivered = await _store.LeaseNextAsync(
+            TestQueue,
+            TimeSpan.FromMinutes(5),
+            "client-b",
+            CancellationToken.None);
+        Assert.NotNull(redelivered);
+        Assert.Equal(2, redelivered.DeliveryCount);
+    }
+
     // ── Nack with requeue=true ────────────────────────────────────────
 
     [Fact]

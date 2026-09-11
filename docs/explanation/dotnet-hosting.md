@@ -14,7 +14,7 @@ Obiekty są singletonami, ponieważ współdzielą jedną bazę i kontrolę zapi
 
 ## Composition root
 
-<code>Program.cs</code> jest composition rootem dla SQLite, implementacji portów i hosted services. <code>GrpcTransportServer</code> pobiera z głównego hosta standardową sekcję Kestrela, która określa endpoint HTTP/2 i certyfikat TLS. Domyślny adres to <code>https://localhost:50051</code>. Opcjonalna sekcja <code>RocketMQ:Security:MutualTls</code> włącza żądanie certyfikatu klienta i wskazuje prywatne CA używane przez callback Kestrela. Opcjonalna sekcja <code>Authorization</code> ładuje snapshot allowlisty, tworzy principal z certyfikatu i chroni endpointy politykami ASP.NET Core. Walidator oraz certyfikaty CA żyją tak długo jak wewnętrzny host gRPC. Core pozostaje niezależny od hosta, TLS i autoryzacji.
+<code>Program.cs</code> jest composition rootem dla SQLite, implementacji portów i hosted services. <code>GrpcTransportServer</code> pobiera z głównego hosta standardową sekcję Kestrela, która określa endpoint HTTP/2 i certyfikat TLS. Domyślny adres to <code>https://localhost:50051</code>. Opcjonalna sekcja <code>RocketMQ:Security:MutualTls</code> włącza żądanie certyfikatu klienta i wskazuje prywatne CA używane przez callback Kestrela. Opcjonalna sekcja <code>Authorization</code> ładuje snapshot allowlisty, tworzy principal z certyfikatu, chroni grupy endpointów politykami ASP.NET Core i w serwisach sprawdza dokładną nazwę exchange lub kolejki. Walidator, rejestr ACL oraz certyfikaty CA żyją tak długo jak wewnętrzny host gRPC. Core pozostaje niezależny od hosta, TLS i autoryzacji; zna jedynie opcjonalny tekstowy identyfikator właściciela lease'a.
 
 ## BackgroundService i PeriodicTimer
 

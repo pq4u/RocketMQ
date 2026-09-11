@@ -74,4 +74,29 @@ public class AdminServiceTests
             b.ExchangeName == "my-exchange" && b.QueueName == "my-queue" && b.RoutingKey == "my.routing.key"), 
             It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task Bind_WithAuthorization_RequiresAdminOnExchangeAndQueue()
+    {
+        var authorizer = new TestBrokerRequestAuthorizer();
+        _routingStoreMock.Setup(x => x.BindAsync(
+                It.IsAny<Binding>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new AdminService(_routingStoreMock.Object, authorizer);
+
+        await service.Bind(new BindRequest
+        {
+            ExchangeName = "my-exchange",
+            QueueName = "my-queue",
+            RoutingKey = "my.routing.key"
+        }, _context);
+
+        Assert.Contains(
+            (BrokerPermission.Admin, BrokerResourceKind.Exchange, "my-exchange"),
+            authorizer.Demands);
+        Assert.Contains(
+            (BrokerPermission.Admin, BrokerResourceKind.Queue, "my-queue"),
+            authorizer.Demands);
+    }
 }

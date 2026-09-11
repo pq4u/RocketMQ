@@ -36,20 +36,51 @@ public sealed class WalMessageQueueStore : IMessageQueueStore
             "file, fsync, return message id. (contract point 1 — durability)");
 
     public Task<LeasedMessage?> LeaseNextAsync(string queueName, TimeSpan visibilityTimeout, CancellationToken ct)
+        => LeaseNextAsync(queueName, visibilityTimeout, leaseOwnerId: null, ct);
+
+    public Task<LeasedMessage?> LeaseNextAsync(
+        string queueName,
+        TimeSpan visibilityTimeout,
+        string? leaseOwnerId,
+        CancellationToken ct)
         => throw new NotImplementedException(
             "TODO: find oldest available message WHERE queue_name = @queueName in the " +
-            "in-memory index, append lease record to log, fsync, update index, return " +
+            "in-memory index, append owner-aware lease record to log, fsync, update index, return " +
             "LeasedMessage or null. (contract points 2, 3, 6, 8)");
 
-    public Task AckAsync(Guid leaseId, CancellationToken ct)
+    public Task<string> GetActiveLeaseQueueAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: validate lease is active in index, append ack record to log, " +
+            "TODO: resolve an active lease to its queue only when leaseOwnerId matches. " +
+            "Throw InvalidOperationException for unknown, foreign, or expired leases. " +
+            "(contract points 4, 5)");
+
+    public Task AckAsync(Guid leaseId, CancellationToken ct)
+        => AckAsync(leaseId, leaseOwnerId: null, expectedQueueName: null, ct);
+
+    public Task AckAsync(
+        Guid leaseId,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct)
+        => throw new NotImplementedException(
+            "TODO: validate lease, owner, and optional expected queue are active in index, append ack record to log, " +
             "fsync, remove from index. Throw InvalidOperationException if lease " +
             "is not active. (contract point 4)");
 
     public Task NackAsync(Guid leaseId, bool requeue, CancellationToken ct)
+        => NackAsync(leaseId, requeue, leaseOwnerId: null, expectedQueueName: null, ct);
+
+    public Task NackAsync(
+        Guid leaseId,
+        bool requeue,
+        string? leaseOwnerId,
+        string? expectedQueueName,
+        CancellationToken ct)
         => throw new NotImplementedException(
-            "TODO: validate lease is active in index. If requeue=true, append " +
+            "TODO: validate lease, owner, and optional expected queue are active in index. If requeue=true, append " +
             "nack-requeue record, update index to available. If requeue=false, " +
             "append dead-letter record, update index. Throw " +
             "InvalidOperationException if lease is not active. (contract point 5)");

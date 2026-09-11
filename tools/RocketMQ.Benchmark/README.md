@@ -68,6 +68,8 @@ certificate is loaded once and attached to the benchmark's single reusable
 HTTP/2 channel. The JSON scenario records whether mTLS was enabled.
 
 When operation authorization is enabled, register the certificate fingerprint
-with both Admin and Publish. The benchmark creates its topology before it
-starts publishing.
+with global Admin and Publish permissions. The benchmark generates unique
+exchange and queue names for every run, so a static exact-name ACL is not a
+practical substitute unless those generated names are known and configured in
+advance. The benchmark creates its topology before it starts publishing.
 
